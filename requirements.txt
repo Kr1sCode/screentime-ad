@@ -1,3 +1,4 @@
 Flask==3.1.*
 sqlcipher3-binary==0.5.*
 gunicorn==23.*
+ldap3==2.9.*

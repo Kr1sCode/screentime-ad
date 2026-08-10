@@ -273,8 +273,8 @@ async function api(path, opts) {
 }
 function fmtMin(sec) { return Math.floor(sec / 60); }
 
-async function refresh() {
-  const s = await api('/api/state');
+// Telemetria (bezpieczna do odświeżania co kilka sekund — nic tu nie edytujesz).
+function renderLive(s) {
   document.getElementById('dateLabel').textContent = s.date + (s.blocked_now ? ' · GODZINA BLOKADY' : '');
 
   const totalSec = s.daily_limit_minutes * 60 + s.bonus_seconds;
@@ -292,24 +292,17 @@ async function refresh() {
   document.getElementById('usedStat').textContent = `${fmtMin(s.used_seconds)} / ${s.daily_limit_minutes + Math.floor(s.bonus_seconds/60)} min`;
   document.getElementById('bonusStat').textContent = `${s.bonus_seconds >= 0 ? '+' : ''}${Math.floor(s.bonus_seconds/60)} min`;
   document.getElementById('machineCount').textContent = s.machines.length;
-
-  document.getElementById('targetUsername').value = s.target_username || '';
   document.getElementById('agentToken').textContent = s.agent_token;
 
   const todayKey = WEEKDAYS[(new Date().getDay() + 6) % 7][0];
   WEEKDAYS.forEach(([key]) => {
     const limitMin = s.weekday_limits[key];
-    document.getElementById(`input-${key}`).value = limitMin;
     const usedMin = key === todayKey ? fmtMin(s.used_seconds) : 0;
     const h = limitMin > 0 ? Math.min(100, 100 * usedMin / limitMin) : 0;
     document.getElementById(`fill-${key}`).style.height = h + '%';
     const wb = document.querySelector(`.weekbar[data-key="${key}"]`);
     wb.classList.toggle('today', key === todayKey);
   });
-
-  const rangesList = document.getElementById('rangesList');
-  rangesList.innerHTML = '';
-  (s.blocked_ranges.length ? s.blocked_ranges : [{start:'',end:''}]).forEach(r => addRangeRow(r.start, r.end));
 
   document.getElementById('machinesBody').innerHTML = s.machines.map(m =>
     `<tr><td>${m.hostname}</td><td>${m.os||''}</td><td>${new Date(m.last_seen).toLocaleString('pl-PL')}</td></tr>`
@@ -318,6 +311,25 @@ async function refresh() {
   document.getElementById('historyBody').innerHTML = s.history.map(h =>
     `<tr><td>${h.date}</td><td>${Math.floor(h.seconds_used/60)}</td></tr>`
   ).join('') || '<tr><td colspan="2" class="sub">brak danych</td></tr>';
+}
+
+// Pola edytowalne — ustawiane tylko przy starcie strony i zaraz po zapisie,
+// NIGDY przez cykliczny poller (inaczej kasuje to co właśnie wpisujesz).
+function renderConfigForms(s) {
+  document.getElementById('targetUsername').value = s.target_username || '';
+  WEEKDAYS.forEach(([key]) => { document.getElementById(`input-${key}`).value = s.weekday_limits[key]; });
+  const rangesList = document.getElementById('rangesList');
+  rangesList.innerHTML = '';
+  (s.blocked_ranges.length ? s.blocked_ranges : [{start:'',end:''}]).forEach(r => addRangeRow(r.start, r.end));
+}
+
+async function refresh() {
+  const s = await api('/api/state');
+  renderLive(s);
+  renderConfigForms(s);
+}
+async function refreshLive() {
+  renderLive(await api('/api/state'));
 }
 
 function addRangeRow(start = '', end = '') {
@@ -344,8 +356,8 @@ async function saveAccount() {
   await api('/api/config', { method: 'POST', body: JSON.stringify({ target_username: document.getElementById('targetUsername').value }) });
   refresh();
 }
-async function addBonus(min) { await api('/api/bonus', { method: 'POST', body: JSON.stringify({ minutes: min }) }); refresh(); }
-async function lockNow() { if (confirm('Na pewno zablokować teraz?')) { await api('/api/lock_now', { method: 'POST' }); refresh(); } }
+async function addBonus(min) { await api('/api/bonus', { method: 'POST', body: JSON.stringify({ minutes: min }) }); refreshLive(); }
+async function lockNow() { if (confirm('Na pewno zablokować teraz?')) { await api('/api/lock_now', { method: 'POST' }); refreshLive(); } }
 async function logout() { await api('/api/logout', { method: 'POST' }); location.href = '/login.html'; }
 async function changePassword() {
   const msg = document.getElementById('msg');
@@ -358,7 +370,7 @@ async function changePassword() {
 }
 
 refresh();
-setInterval(refresh, 5000);
+setInterval(refreshLive, 5000);
 </script>
 </body>
 </html>
