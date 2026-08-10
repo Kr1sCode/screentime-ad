@@ -139,6 +139,11 @@
         <div class="hero-row"><span>bonus dzisiaj</span><span id="bonusStat">--</span></div>
         <div class="hero-row"><span>maszyn aktywnych</span><span id="machineCount">--</span></div>
         <div class="row" style="margin-top:.6rem">
+          <button onclick="addBonus(15)">+15 min</button>
+          <button class="ghost" onclick="addBonus(-10)">-10 min</button>
+          <button class="ghost" onclick="addBonus(-20)">-20 min</button>
+        </div>
+        <div class="row" style="margin-top:.4rem">
           <input id="setRemainingInput" type="number" min="0" placeholder="min" style="width:80px">
           <button onclick="setRemaining()">ustaw pozostały czas</button>
         </div>
@@ -423,6 +428,10 @@ async function testLdapConfig() {
   msg.textContent = res.ok ? data.note : data.error;
 }
 
+async function addBonus(minutes) {
+  await api('/api/bonus', { method: 'POST', body: JSON.stringify({ minutes }) });
+  refreshLive();
+}
 async function setRemaining() {
   const val = document.getElementById('setRemainingInput').value;
   if (val === '') return;
