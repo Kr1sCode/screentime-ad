@@ -15,8 +15,7 @@ def make_conn():
         """
         CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT);
         CREATE TABLE daily_usage (date TEXT PRIMARY KEY, seconds_used INTEGER NOT NULL DEFAULT 0);
-        CREATE TABLE bonus_events (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL,
-                                    minutes INTEGER NOT NULL, note TEXT, created_at TEXT NOT NULL);
+        CREATE TABLE daily_bonus (date TEXT PRIMARY KEY, minutes INTEGER NOT NULL DEFAULT 0);
         CREATE TABLE machines (hostname TEXT PRIMARY KEY, os TEXT, last_seen TEXT, last_active_seconds INTEGER DEFAULT 0);
         """
     )
@@ -45,14 +44,39 @@ def test_bonus_extends_quota():
     conn = make_conn()
     core.add_used_seconds(conn, "2026-08-10", 120 * 60)
     assert core.remaining_seconds(conn, "2026-08-10") == 0
-    core.add_bonus(conn, "2026-08-10", 15, "test bonus")
+    core.add_bonus_minutes(conn, "2026-08-10", 15)
     assert core.remaining_seconds(conn, "2026-08-10") == 15 * 60
 
 
-def test_lock_now_zeroes_remaining_via_negative_bonus():
+def test_add_bonus_minutes_is_additive_not_absolute():
     conn = make_conn()
-    core.add_bonus(conn, "2026-08-10", -1_000_000, "zablokuj teraz")
+    core.add_bonus_minutes(conn, "2026-08-10", 15)
+    core.add_bonus_minutes(conn, "2026-08-10", 15)
+    assert core.get_bonus_seconds(conn, "2026-08-10") == 30 * 60
+
+
+def test_set_remaining_minutes_is_absolute_not_additive():
+    conn = make_conn()
+    core.add_used_seconds(conn, "2026-08-10", 60 * 60)  # zużyte 60 z 120
+    core.set_remaining_minutes(conn, 65, "2026-08-10")
+    assert core.remaining_seconds(conn, "2026-08-10") == 65 * 60
+    # wywołane drugi raz z tą samą wartością nie dokłada kolejnych 65
+    core.set_remaining_minutes(conn, 65, "2026-08-10")
+    assert core.remaining_seconds(conn, "2026-08-10") == 65 * 60
+
+
+def test_manual_lock_zeroes_remaining_and_is_reversible():
+    conn = make_conn()
+    core.set_manual_lock(conn, True, "2026-08-10")
     assert core.remaining_seconds(conn, "2026-08-10") == 0
+    core.set_manual_lock(conn, False, "2026-08-10")
+    assert core.remaining_seconds(conn, "2026-08-10") == 120 * 60
+
+
+def test_manual_lock_is_scoped_to_its_day():
+    conn = make_conn()
+    core.set_manual_lock(conn, True, "2026-08-10")
+    assert core.remaining_seconds(conn, "2026-08-11") == 120 * 60
 
 
 def test_days_are_independent():

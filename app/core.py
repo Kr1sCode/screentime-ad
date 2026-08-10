@@ -106,22 +106,48 @@ def add_used_seconds(conn: sqlite3.Connection, date: str, delta: int) -> None:
 
 
 def get_bonus_seconds(conn: sqlite3.Connection, date: str) -> int:
-    row = conn.execute(
-        "SELECT COALESCE(SUM(minutes), 0) AS m FROM bonus_events WHERE date=?", (date,)
-    ).fetchone()
-    return (row["m"] or 0) * 60
+    row = conn.execute("SELECT minutes FROM daily_bonus WHERE date=?", (date,)).fetchone()
+    return (row["minutes"] if row else 0) * 60
 
 
-def add_bonus(conn: sqlite3.Connection, date: str, minutes: int, note: str = "") -> None:
+def _set_bonus_minutes(conn: sqlite3.Connection, date: str, minutes: int) -> None:
     conn.execute(
-        "INSERT INTO bonus_events (date, minutes, note, created_at) VALUES (?, ?, ?, ?)",
-        (date, minutes, note, datetime.now(TZ).isoformat()),
+        "INSERT INTO daily_bonus (date, minutes) VALUES (?, ?) "
+        "ON CONFLICT(date) DO UPDATE SET minutes = excluded.minutes",
+        (date, minutes),
     )
     conn.commit()
 
 
+def add_bonus_minutes(conn: sqlite3.Connection, date: str, delta_minutes: int) -> None:
+    current = get_bonus_seconds(conn, date) // 60
+    _set_bonus_minutes(conn, date, current + delta_minutes)
+
+
+def set_remaining_minutes(conn: sqlite3.Connection, minutes: int, date: str | None = None) -> None:
+    """Ustawia pozostały czas NA TERAZ na dokładnie `minutes` (nie dodaje)."""
+    date = date or today_str()
+    set_manual_lock(conn, False, date)
+    limit = get_daily_limit_seconds(conn, date)
+    used = get_used_seconds(conn, date)
+    needed_bonus_seconds = max(0, minutes) * 60 - limit + used
+    _set_bonus_minutes(conn, date, needed_bonus_seconds // 60)
+
+
+def is_manually_locked(conn: sqlite3.Connection, date: str | None = None) -> bool:
+    date = date or today_str()
+    return get_config(conn, "manual_lock_date", "") == date
+
+
+def set_manual_lock(conn: sqlite3.Connection, locked: bool, date: str | None = None) -> None:
+    date = date or today_str()
+    set_config(conn, "manual_lock_date", date if locked else "")
+
+
 def remaining_seconds(conn: sqlite3.Connection, date: str | None = None) -> int:
     date = date or today_str()
+    if is_manually_locked(conn, date):
+        return 0
     limit = get_daily_limit_seconds(conn, date) + get_bonus_seconds(conn, date)
     used = get_used_seconds(conn, date)
     return max(0, limit - used)

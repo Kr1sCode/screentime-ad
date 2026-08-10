@@ -139,9 +139,11 @@
         <div class="hero-row"><span>bonus dzisiaj</span><span id="bonusStat">--</span></div>
         <div class="hero-row"><span>maszyn aktywnych</span><span id="machineCount">--</span></div>
         <div class="row" style="margin-top:.6rem">
-          <button onclick="addBonus(15)">+15 min</button>
-          <button onclick="addBonus(30)">+30 min</button>
-          <button class="danger" onclick="lockNow()">zablokuj teraz</button>
+          <input id="setRemainingInput" type="number" min="0" placeholder="min" style="width:80px">
+          <button onclick="setRemaining()">ustaw pozostały czas</button>
+        </div>
+        <div class="row" style="margin-top:.4rem">
+          <button class="danger" id="lockToggleBtn" onclick="toggleLock()">zablokuj teraz</button>
         </div>
       </div>
     </div>
@@ -311,7 +313,8 @@ function renderLive(s) {
 
   const pillWrap = document.getElementById('statusPillWrap');
   let pillClass = 'ok', pillText = 'W normie';
-  if (s.blocked_now) { pillClass = 'crit'; pillText = 'Zablokowane (godziny)'; }
+  if (s.manual_locked) { pillClass = 'crit'; pillText = 'Zablokowane ręcznie'; }
+  else if (s.blocked_now) { pillClass = 'crit'; pillText = 'Zablokowane (godziny)'; }
   else if (s.remaining_seconds <= 0) { pillClass = 'crit'; pillText = 'Wyczerpane'; }
   else if (s.remaining_seconds <= 300) { pillClass = 'warn'; pillText = 'Kończy się'; }
   pillWrap.innerHTML = `<span class="status-pill ${pillClass}">● ${pillText}</span>`;
@@ -320,6 +323,12 @@ function renderLive(s) {
   document.getElementById('bonusStat').textContent = `${s.bonus_seconds >= 0 ? '+' : ''}${Math.floor(s.bonus_seconds/60)} min`;
   document.getElementById('machineCount').textContent = s.machines.length;
   document.getElementById('agentToken').textContent = s.agent_token;
+
+  lastManualLocked = s.manual_locked;
+  const lockBtn = document.getElementById('lockToggleBtn');
+  lockBtn.textContent = s.manual_locked ? 'odblokuj teraz' : 'zablokuj teraz';
+  lockBtn.classList.toggle('danger', !s.manual_locked);
+  lockBtn.classList.toggle('ghost', s.manual_locked);
 
   const todayKey = WEEKDAYS[(new Date().getDay() + 6) % 7][0];
   WEEKDAYS.forEach(([key]) => {
@@ -414,8 +423,20 @@ async function testLdapConfig() {
   msg.textContent = res.ok ? data.note : data.error;
 }
 
-async function addBonus(min) { await api('/api/bonus', { method: 'POST', body: JSON.stringify({ minutes: min }) }); refreshLive(); }
-async function lockNow() { if (confirm('Na pewno zablokować teraz?')) { await api('/api/lock_now', { method: 'POST' }); refreshLive(); } }
+async function setRemaining() {
+  const val = document.getElementById('setRemainingInput').value;
+  if (val === '') return;
+  await api('/api/set_remaining', { method: 'POST', body: JSON.stringify({ minutes: parseInt(val, 10) }) });
+  document.getElementById('setRemainingInput').value = '';
+  refreshLive();
+}
+let lastManualLocked = false;
+async function toggleLock() {
+  const path = lastManualLocked ? '/api/unlock_now' : '/api/lock_now';
+  if (!lastManualLocked && !confirm('Na pewno zablokować teraz?')) return;
+  await api(path, { method: 'POST' });
+  refreshLive();
+}
 async function logout() { await api('/api/logout', { method: 'POST' }); location.href = '/login.html'; }
 async function changePassword() {
   const msg = document.getElementById('msg');
@@ -426,6 +447,12 @@ async function changePassword() {
   msg.textContent = res.ok ? 'Hasło zmienione.' : (data.error || 'błąd');
   if (res.ok) { document.getElementById('curPass').value = ''; document.getElementById('newPass').value = ''; }
 }
+
+const scrollArea = document.querySelector('.scroll-area');
+document.addEventListener('wheel', (e) => {
+  scrollArea.scrollTop += e.deltaY;
+  e.preventDefault();
+}, { passive: false });
 
 refresh();
 setInterval(refreshLive, 5000);

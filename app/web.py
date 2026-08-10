@@ -154,6 +154,7 @@ def state():
         machines=core.list_machines(conn),
         history=core.history(conn),
         agent_token=core.get_config(conn, "agent_token"),
+        manual_locked=core.is_manually_locked(conn, date),
         ad_lock_enabled=core.get_config(conn, "ad_lock_enabled", "0") == "1",
         ldap_configured=_ldap_cfg(conn) is not None,
         ldap_host=core.get_config(conn, "ldap_host", ""),
@@ -218,7 +219,17 @@ def set_config():
 def bonus():
     data = request.get_json(force=True)
     conn = db.get_conn()
-    core.add_bonus(conn, core.today_str(), int(data["minutes"]), data.get("note", "ręcznie z panelu"))
+    core.add_bonus_minutes(conn, core.today_str(), int(data["minutes"]))
+    conn.close()
+    return jsonify(ok=True)
+
+
+@app.post("/api/set_remaining")
+@login_required
+def set_remaining():
+    data = request.get_json(force=True)
+    conn = db.get_conn()
+    core.set_remaining_minutes(conn, int(data["minutes"]))
     conn.close()
     return jsonify(ok=True)
 
@@ -227,7 +238,16 @@ def bonus():
 @login_required
 def lock_now():
     conn = db.get_conn()
-    core.add_bonus(conn, core.today_str(), -1_000_000, "zablokuj teraz (panel)")
+    core.set_manual_lock(conn, True)
+    conn.close()
+    return jsonify(ok=True)
+
+
+@app.post("/api/unlock_now")
+@login_required
+def unlock_now():
+    conn = db.get_conn()
+    core.set_manual_lock(conn, False)
     conn.close()
     return jsonify(ok=True)
 

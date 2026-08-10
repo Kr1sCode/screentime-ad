@@ -18,12 +18,9 @@ CREATE TABLE IF NOT EXISTS daily_usage (
     date TEXT PRIMARY KEY,
     seconds_used INTEGER NOT NULL DEFAULT 0
 );
-CREATE TABLE IF NOT EXISTS bonus_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT NOT NULL,
-    minutes INTEGER NOT NULL,
-    note TEXT,
-    created_at TEXT NOT NULL
+CREATE TABLE IF NOT EXISTS daily_bonus (
+    date TEXT PRIMARY KEY,
+    minutes INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS machines (
     hostname TEXT PRIMARY KEY,
@@ -62,6 +59,18 @@ def init_db() -> None:
     conn.executescript(SCHEMA)
     conn.commit()
 
+    old_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='bonus_events'"
+    ).fetchone()
+    if old_table:
+        conn.execute(
+            "INSERT INTO daily_bonus (date, minutes) "
+            "SELECT date, SUM(minutes) FROM bonus_events GROUP BY date "
+            "ON CONFLICT(date) DO UPDATE SET minutes = minutes + excluded.minutes"
+        )
+        conn.execute("DROP TABLE bonus_events")
+        conn.commit()
+
     if not conn.execute("SELECT 1 FROM admin WHERE username = 'admin'").fetchone():
         conn.execute(
             "INSERT INTO admin (username, password_hash) VALUES (?, ?)",
@@ -78,6 +87,7 @@ def init_db() -> None:
         "ldap_base_dn": "",
         "ldap_bind_dn": "",
         "ldap_bind_password": "",
+        "manual_lock_date": "",
     }
     for k, v in defaults.items():
         conn.execute("INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", (k, v))
