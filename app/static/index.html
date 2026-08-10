@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<title>screentime-ad</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; background: #12151a; color: #e6e8eb; margin: 0; padding: 2rem; }
+  .wrap { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.2rem; }
+  h1 { font-size: 1.3rem; margin: 0; color: #9fb3c8; }
+  header { display: flex; justify-content: space-between; align-items: center; }
+  .card { background: #1b1f27; border-radius: 12px; padding: 1.2rem 1.4rem; }
+  .barwrap { background: #10131a; border-radius: 8px; height: 22px; overflow: hidden; margin: .6rem 0; }
+  .bar { height: 100%; background: linear-gradient(90deg,#3b82f6,#22c55e); transition: width .3s; }
+  .bar.low { background: linear-gradient(90deg,#f59e0b,#ef4444); }
+  .stat { font-size: 1.4rem; font-weight: 700; }
+  .muted { color: #8a94a3; font-size: .85rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  th, td { text-align: left; padding: .4rem .3rem; border-bottom: 1px solid #262b34; }
+  input { padding: .45rem .6rem; border-radius: 6px; border: 1px solid #2c333d; background: #10131a; color: #e6e8eb; }
+  button { padding: .45rem .8rem; border: 0; border-radius: 6px; background: #3b82f6; color: white; cursor: pointer; font-weight: 600; }
+  button.danger { background: #ef4444; }
+  button.ghost { background: transparent; border: 1px solid #2c333d; color: #9fb3c8; }
+  button:hover { filter: brightness(1.1); }
+  .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+  code { background: #10131a; padding: .2rem .4rem; border-radius: 4px; }
+  #msg { min-height: 1.2rem; font-size: .85rem; color: #4ade80; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>screentime-ad</h1>
+    <button class="ghost" onclick="logout()">Wyloguj</button>
+  </header>
+
+  <div class="card">
+    <div class="row" style="justify-content: space-between;">
+      <div class="stat" id="usedStat">-- / --</div>
+      <div class="muted" id="remainingStat">--</div>
+    </div>
+    <div class="barwrap"><div class="bar" id="bar" style="width:0%"></div></div>
+    <div class="row">
+      <button onclick="addBonus(15)">+15 min</button>
+      <button onclick="addBonus(30)">+30 min</button>
+      <button class="danger" onclick="lockNow()">Zablokuj teraz</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Konfiguracja</h3>
+    <div class="row">
+      <label>Konto AD (sAMAccountName)<br><input id="targetUsername" placeholder="np. jkowalski"></label>
+      <label>Dzienny limit (min)<br><input id="dailyLimit" type="number" min="0" style="width:100px"></label>
+      <button onclick="saveConfig()">Zapisz</button>
+    </div>
+    <p class="muted">Token agenta (do configu agentów Windows/Linux): <code id="agentToken">--</code></p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Maszyny</h3>
+    <table>
+      <thead><tr><th>Hostname</th><th>OS</th><th>Ostatnio widziano</th></tr></thead>
+      <tbody id="machinesBody"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Historia (7 dni)</h3>
+    <table>
+      <thead><tr><th>Data</th><th>Zużyte (min)</th></tr></thead>
+      <tbody id="historyBody"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Zmiana hasła</h3>
+    <div class="row">
+      <input id="curPass" type="password" placeholder="obecne hasło">
+      <input id="newPass" type="password" placeholder="nowe hasło">
+      <button onclick="changePassword()">Zmień</button>
+    </div>
+    <div id="msg"></div>
+  </div>
+</div>
+
+<script>
+async function api(path, opts) {
+  const res = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts));
+  if (res.status === 401) { location.href = '/login.html'; throw new Error('unauth'); }
+  return res.json();
+}
+function fmtMin(sec) { return Math.floor(sec / 60) + ' min'; }
+
+async function refresh() {
+  const s = await api('/api/state');
+  document.getElementById('usedStat').textContent = `${fmtMin(s.used_seconds)} / ${s.daily_limit_minutes + Math.floor(s.bonus_seconds/60)} min`;
+  document.getElementById('remainingStat').textContent = `pozostało: ${fmtMin(s.remaining_seconds)}`;
+  const total = s.daily_limit_minutes * 60 + s.bonus_seconds;
+  const pct = total > 0 ? Math.min(100, 100 * s.used_seconds / total) : 100;
+  const bar = document.getElementById('bar');
+  bar.style.width = pct + '%';
+  bar.className = 'bar' + (s.remaining_seconds <= 300 ? ' low' : '');
+
+  document.getElementById('targetUsername').value = s.target_username || '';
+  document.getElementById('dailyLimit').value = s.daily_limit_minutes;
+  document.getElementById('agentToken').textContent = s.agent_token;
+
+  document.getElementById('machinesBody').innerHTML = s.machines.map(m =>
+    `<tr><td>${m.hostname}</td><td>${m.os||''}</td><td>${new Date(m.last_seen).toLocaleString('pl-PL')}</td></tr>`
+  ).join('') || '<tr><td colspan="3" class="muted">brak danych</td></tr>';
+
+  document.getElementById('historyBody').innerHTML = s.history.map(h =>
+    `<tr><td>${h.date}</td><td>${Math.floor(h.seconds_used/60)}</td></tr>`
+  ).join('') || '<tr><td colspan="2" class="muted">brak danych</td></tr>';
+}
+
+async function saveConfig() {
+  await api('/api/config', { method: 'POST', body: JSON.stringify({
+    target_username: document.getElementById('targetUsername').value,
+    daily_limit_minutes: document.getElementById('dailyLimit').value,
+  })});
+  refresh();
+}
+async function addBonus(min) { await api('/api/bonus', { method: 'POST', body: JSON.stringify({ minutes: min }) }); refresh(); }
+async function lockNow() { if (confirm('Na pewno zablokować teraz?')) { await api('/api/lock_now', { method: 'POST' }); refresh(); } }
+async function logout() { await api('/api/logout', { method: 'POST' }); location.href = '/login.html'; }
+async function changePassword() {
+  const msg = document.getElementById('msg');
+  const res = await fetch('/api/change_password', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ current_password: document.getElementById('curPass').value, new_password: document.getElementById('newPass').value }) });
+  const data = await res.json();
+  msg.style.color = res.ok ? '#4ade80' : '#f87171';
+  msg.textContent = res.ok ? 'Hasło zmienione.' : (data.error || 'błąd');
+  if (res.ok) { document.getElementById('curPass').value = ''; document.getElementById('newPass').value = ''; }
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

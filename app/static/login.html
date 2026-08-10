@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<title>screentime-ad — logowanie</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: system-ui, sans-serif; background: #12151a; color: #e6e8eb; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+  form { background: #1b1f27; padding: 2rem; border-radius: 12px; width: 280px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+  h1 { font-size: 1.1rem; margin: 0 0 1.2rem; color: #9fb3c8; }
+  input { width: 100%; box-sizing: border-box; padding: .6rem .7rem; margin-bottom: .8rem; border-radius: 8px; border: 1px solid #2c333d; background: #10131a; color: #e6e8eb; }
+  button { width: 100%; padding: .6rem; border: 0; border-radius: 8px; background: #3b82f6; color: white; font-weight: 600; cursor: pointer; }
+  button:hover { background: #2f6fd6; }
+  #err { color: #f87171; font-size: .85rem; min-height: 1.2rem; margin-top: .5rem; }
+</style>
+</head>
+<body>
+<form id="f">
+  <h1>screentime-ad</h1>
+  <input name="username" placeholder="login" autocomplete="username" value="admin">
+  <input name="password" type="password" placeholder="hasło" autocomplete="current-password">
+  <button type="submit">Zaloguj</button>
+  <div id="err"></div>
+</form>
+<script>
+document.getElementById('f').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const res = await fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: f.get('username'), password: f.get('password') }),
+  });
+  if (res.ok) { location.href = '/'; return; }
+  const data = await res.json().catch(() => ({}));
+  document.getElementById('err').textContent = data.error || 'błąd logowania';
+});
+</script>
+</body>
+</html>

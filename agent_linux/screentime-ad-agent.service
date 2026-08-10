@@ -1,0 +1,13 @@
+[Unit]
+Description=screentime-ad agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/screentime-ad-agent/agent.py
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target
