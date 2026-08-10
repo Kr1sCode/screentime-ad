@@ -53,7 +53,7 @@ def get_conn() -> sqlite3.Connection:
 
     conn = sqlcipher3.connect(str(DB_FILE))
     conn.execute("PRAGMA key = \"x'%s'\"" % _get_or_create_key())
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = sqlcipher3.dbapi2.Row
     return conn
 
 
