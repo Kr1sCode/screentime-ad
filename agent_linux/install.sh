@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # screentime-ad agent installer — uruchom jako root NA maszynie Linux (np. CachyOS AD-joined).
 #
-#   sudo SCREENTIME_SERVER=http://172.19.19.22 SCREENTIME_TOKEN=<token_z_panelu> \
+#   sudo SCREENTIME_SERVER=http://192.168.1.50 SCREENTIME_TOKEN=<token_z_panelu> \
 #     bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kr1sCode/screentime-ad/main/agent_linux/install.sh)"
 #
 set -euo pipefail
@@ -13,7 +13,7 @@ BRANCH="${SCREENTIME_BRANCH:-main}"
 SERVER="${SCREENTIME_SERVER:-}"
 TOKEN="${SCREENTIME_TOKEN:-}"
 
-[ -n "$SERVER" ] || read -rp "Adres serwera (np. http://172.19.19.22): " SERVER
+[ -n "$SERVER" ] || read -rp "Adres serwera (np. http://192.168.1.50): " SERVER
 [ -n "$TOKEN" ]  || read -rp "Token agenta (z panelu, sekcja Konfiguracja): " TOKEN
 
 command -v zenity >/dev/null 2>&1 || { pacman -Sy --noconfirm zenity 2>/dev/null || apt-get -qq update && apt-get -qq install -y zenity; }

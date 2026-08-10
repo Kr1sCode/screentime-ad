@@ -3,7 +3,7 @@
 #   irm https://raw.githubusercontent.com/Kr1sCode/screentime-ad/main/agent_windows/install.ps1 | iex
 #
 param(
-  [string]$Server = $(Read-Host "Adres serwera (np. http://172.19.19.22)"),
+  [string]$Server = $(Read-Host "Adres serwera (np. http://192.168.1.50)"),
   [string]$Token  = $(Read-Host "Token agenta (z panelu, sekcja Konfiguracja)")
 )
 $ErrorActionPreference = "Stop"

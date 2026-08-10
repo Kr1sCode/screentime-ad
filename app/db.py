@@ -70,7 +70,8 @@ def init_db() -> None:
 
     defaults = {
         "target_username": "",
-        "daily_limit_minutes": "120",
+        "weekday_limits": '{"mon":120,"tue":120,"wed":120,"thu":120,"fri":120,"sat":180,"sun":180}',
+        "blocked_ranges": "[]",
         "agent_token": secrets.token_hex(24),
     }
     for k, v in defaults.items():

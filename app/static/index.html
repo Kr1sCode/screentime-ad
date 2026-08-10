@@ -2,126 +2,330 @@
 <html lang="pl">
 <head>
 <meta charset="utf-8">
-<title>screentime-ad</title>
+<title>screentime-ad // control</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  :root { color-scheme: dark; }
+  :root {
+    --bg: #05080d;
+    --grid: rgba(34, 211, 238, 0.05);
+    --panel: rgba(12, 20, 28, 0.82);
+    --panel-border: rgba(34, 211, 238, 0.18);
+    --accent: #22d3ee;
+    --accent-dim: #0e7490;
+    --good: #34e0a1;
+    --warn: #fab219;
+    --crit: #ff4d5e;
+    --text: #dff6fb;
+    --text-dim: #6f93a0;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", Consolas, monospace;
+  }
   * { box-sizing: border-box; }
-  body { font-family: system-ui, sans-serif; background: #12151a; color: #e6e8eb; margin: 0; padding: 2rem; }
-  .wrap { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.2rem; }
-  h1 { font-size: 1.3rem; margin: 0; color: #9fb3c8; }
-  header { display: flex; justify-content: space-between; align-items: center; }
-  .card { background: #1b1f27; border-radius: 12px; padding: 1.2rem 1.4rem; }
-  .barwrap { background: #10131a; border-radius: 8px; height: 22px; overflow: hidden; margin: .6rem 0; }
-  .bar { height: 100%; background: linear-gradient(90deg,#3b82f6,#22c55e); transition: width .3s; }
-  .bar.low { background: linear-gradient(90deg,#f59e0b,#ef4444); }
-  .stat { font-size: 1.4rem; font-weight: 700; }
-  .muted { color: #8a94a3; font-size: .85rem; }
-  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-  th, td { text-align: left; padding: .4rem .3rem; border-bottom: 1px solid #262b34; }
-  input { padding: .45rem .6rem; border-radius: 6px; border: 1px solid #2c333d; background: #10131a; color: #e6e8eb; }
-  button { padding: .45rem .8rem; border: 0; border-radius: 6px; background: #3b82f6; color: white; cursor: pointer; font-weight: 600; }
-  button.danger { background: #ef4444; }
-  button.ghost { background: transparent; border: 1px solid #2c333d; color: #9fb3c8; }
-  button:hover { filter: brightness(1.1); }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(34,211,238,0.10), transparent 60%),
+      radial-gradient(ellipse 700px 500px at 100% 10%, rgba(139,92,246,0.08), transparent 60%),
+      var(--bg);
+    padding: 2.4rem 1.5rem 4rem;
+    position: relative;
+  }
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 42px 42px;
+    pointer-events: none;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black, transparent 75%);
+  }
+  .wrap { max-width: 920px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.4rem; position: relative; }
+
+  header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--panel-border); padding-bottom: .8rem; }
+  h1 { font-size: 1rem; margin: 0; letter-spacing: .3em; text-transform: uppercase; color: var(--accent); text-shadow: 0 0 12px rgba(34,211,238,.6); }
+  .sub { font-family: var(--mono); font-size: .7rem; color: var(--text-dim); letter-spacing: .1em; }
+
+  .panel {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    padding: 1.4rem 1.6rem;
+    backdrop-filter: blur(6px);
+  }
+  .corners .c { position: absolute; width: 14px; height: 14px; pointer-events: none; }
+  .corners .tl { top: -1px; left: -1px; border-top: 2px solid var(--accent); border-left: 2px solid var(--accent); }
+  .corners .tr { top: -1px; right: -1px; border-top: 2px solid var(--accent); border-right: 2px solid var(--accent); }
+  .corners .bl { bottom: -1px; left: -1px; border-bottom: 2px solid var(--accent); border-left: 2px solid var(--accent); }
+  .corners .br { bottom: -1px; right: -1px; border-bottom: 2px solid var(--accent); border-right: 2px solid var(--accent); }
+
+  h2 { margin: 0 0 1rem; font-size: .75rem; letter-spacing: .2em; text-transform: uppercase; color: var(--text-dim); font-weight: 600; }
+
+  .hero { display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; }
+  .gauge-box { flex-shrink: 0; }
+  .gauge-readout { position: relative; }
+  .gauge-num { font-family: var(--mono); font-size: 2.1rem; font-weight: 700; text-align: center; }
+  .gauge-label { font-family: var(--mono); font-size: .65rem; text-align: center; color: var(--text-dim); letter-spacing: .15em; margin-top: .2rem; }
+  .hero-side { display: flex; flex-direction: column; gap: .5rem; font-family: var(--mono); font-size: .85rem; flex: 1; min-width: 220px; }
+  .hero-row { display: flex; justify-content: space-between; border-bottom: 1px dashed var(--panel-border); padding-bottom: .35rem; }
+  .hero-row span:first-child { color: var(--text-dim); text-transform: uppercase; letter-spacing: .1em; font-size: .7rem; }
+  .status-pill { display: inline-flex; align-items: center; gap: .4rem; font-family: var(--mono); font-size: .7rem; letter-spacing: .1em; padding: .25rem .6rem; border-radius: 3px; text-transform: uppercase; }
+  .status-pill.ok { color: var(--good); background: rgba(52,224,161,.1); border: 1px solid rgba(52,224,161,.35); }
+  .status-pill.warn { color: var(--warn); background: rgba(250,178,25,.1); border: 1px solid rgba(250,178,25,.35); }
+  .status-pill.crit { color: var(--crit); background: rgba(255,77,94,.12); border: 1px solid rgba(255,77,94,.4); animation: pulse 1.4s infinite; }
+  @keyframes pulse { 50% { opacity: .5; } }
+
+  .weekbar-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: .6rem; margin-top: .4rem; }
+  .weekbar { display: flex; flex-direction: column; align-items: center; gap: .4rem; }
+  .weekbar label { font-family: var(--mono); font-size: .65rem; color: var(--text-dim); letter-spacing: .1em; text-transform: uppercase; }
+  .weekbar .track { width: 100%; height: 70px; background: rgba(255,255,255,.04); border: 1px solid var(--panel-border); border-radius: 2px; display: flex; align-items: flex-end; overflow: hidden; }
+  .weekbar .fill { width: 100%; background: linear-gradient(180deg, var(--accent), var(--accent-dim)); box-shadow: 0 0 10px rgba(34,211,238,.5); transition: height .4s; }
+  .weekbar.today .track { border-color: var(--accent); }
+  .weekbar input { width: 100%; background: #0a1219; border: 1px solid var(--panel-border); color: var(--text); font-family: var(--mono); font-size: .75rem; text-align: center; border-radius: 3px; padding: .25rem 0; }
+
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: .8rem; }
+  th { text-align: left; padding: .4rem .3rem; color: var(--text-dim); text-transform: uppercase; font-size: .65rem; letter-spacing: .1em; border-bottom: 1px solid var(--panel-border); }
+  td { padding: .45rem .3rem; border-bottom: 1px solid rgba(255,255,255,.04); }
+
   .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
-  code { background: #10131a; padding: .2rem .4rem; border-radius: 4px; }
-  #msg { min-height: 1.2rem; font-size: .85rem; color: #4ade80; }
+  input, select { padding: .5rem .65rem; border-radius: 3px; border: 1px solid var(--panel-border); background: #0a1219; color: var(--text); font-family: var(--mono); font-size: .8rem; }
+  button { padding: .5rem .9rem; border: 1px solid var(--accent-dim); border-radius: 3px; background: rgba(34,211,238,.08); color: var(--accent); cursor: pointer; font-family: var(--mono); font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; }
+  button:hover { background: rgba(34,211,238,.18); box-shadow: 0 0 12px rgba(34,211,238,.25); }
+  button.danger { border-color: rgba(255,77,94,.5); color: var(--crit); background: rgba(255,77,94,.08); }
+  button.danger:hover { background: rgba(255,77,94,.18); }
+  button.ghost { border-color: var(--panel-border); color: var(--text-dim); background: transparent; }
+  .ranges { display: flex; flex-direction: column; gap: .5rem; }
+  .range-row { display: flex; gap: .5rem; align-items: center; }
+  #msg { min-height: 1.2rem; font-family: var(--mono); font-size: .8rem; color: var(--good); }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>screentime-ad</h1>
-    <button class="ghost" onclick="logout()">Wyloguj</button>
+    <div class="row">
+      <span class="sub" id="dateLabel">--</span>
+      <button class="ghost" onclick="logout()">wyloguj</button>
+    </div>
   </header>
 
-  <div class="card">
-    <div class="row" style="justify-content: space-between;">
-      <div class="stat" id="usedStat">-- / --</div>
-      <div class="muted" id="remainingStat">--</div>
-    </div>
-    <div class="barwrap"><div class="bar" id="bar" style="width:0%"></div></div>
-    <div class="row">
-      <button onclick="addBonus(15)">+15 min</button>
-      <button onclick="addBonus(30)">+30 min</button>
-      <button class="danger" onclick="lockNow()">Zablokuj teraz</button>
+  <div class="panel">
+    <h2>Status dzisiaj</h2>
+    <div class="hero">
+      <div class="gauge-box">
+        <svg id="gaugeSvg" width="200" height="200" viewBox="0 0 200 200"></svg>
+        <div class="gauge-readout">
+          <div class="gauge-num" id="gaugeNum">--</div>
+          <div class="gauge-label">pozostało (min)</div>
+        </div>
+      </div>
+      <div class="hero-side">
+        <div id="statusPillWrap"></div>
+        <div class="hero-row"><span>zużyte / limit</span><span id="usedStat">-- / --</span></div>
+        <div class="hero-row"><span>bonus dzisiaj</span><span id="bonusStat">--</span></div>
+        <div class="hero-row"><span>maszyn aktywnych</span><span id="machineCount">--</span></div>
+        <div class="row" style="margin-top:.6rem">
+          <button onclick="addBonus(15)">+15 min</button>
+          <button onclick="addBonus(30)">+30 min</button>
+          <button class="danger" onclick="lockNow()">zablokuj teraz</button>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="card">
-    <h3 style="margin-top:0">Konfiguracja</h3>
-    <div class="row">
-      <label>Konto AD (sAMAccountName)<br><input id="targetUsername" placeholder="np. jkowalski"></label>
-      <label>Dzienny limit (min)<br><input id="dailyLimit" type="number" min="0" style="width:100px"></label>
-      <button onclick="saveConfig()">Zapisz</button>
+  <div class="panel">
+    <h2>Limit dzienny — rozbicie na dni tygodnia (min)</h2>
+    <div class="weekbar-row" id="weekbars"></div>
+    <div class="row" style="margin-top:1rem">
+      <button onclick="saveWeekLimits()">zapisz limity</button>
     </div>
-    <p class="muted">Token agenta (do configu agentów Windows/Linux): <code id="agentToken">--</code></p>
   </div>
 
-  <div class="card">
-    <h3 style="margin-top:0">Maszyny</h3>
+  <div class="panel">
+    <h2>Godziny blokady (twardy zakaz, niezależnie od puli)</h2>
+    <div class="ranges" id="rangesList"></div>
+    <div class="row" style="margin-top:.8rem">
+      <button class="ghost" onclick="addRangeRow()">+ dodaj zakres</button>
+      <button onclick="saveRanges()">zapisz</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Konfiguracja konta</h2>
+    <div class="row">
+      <label class="sub">konto AD (sAMAccountName)</label>
+      <input id="targetUsername" placeholder="np. jkowalski">
+      <button onclick="saveAccount()">zapisz</button>
+    </div>
+    <p class="sub" style="margin-top:1rem">token agenta: <span id="agentToken" style="color:var(--accent)">--</span></p>
+  </div>
+
+  <div class="panel">
+    <h2>Maszyny</h2>
     <table>
       <thead><tr><th>Hostname</th><th>OS</th><th>Ostatnio widziano</th></tr></thead>
       <tbody id="machinesBody"></tbody>
     </table>
   </div>
 
-  <div class="card">
-    <h3 style="margin-top:0">Historia (7 dni)</h3>
+  <div class="panel">
+    <h2>Historia (7 dni)</h2>
     <table>
       <thead><tr><th>Data</th><th>Zużyte (min)</th></tr></thead>
       <tbody id="historyBody"></tbody>
     </table>
   </div>
 
-  <div class="card">
-    <h3 style="margin-top:0">Zmiana hasła</h3>
+  <div class="panel">
+    <h2>Zmiana hasła</h2>
     <div class="row">
       <input id="curPass" type="password" placeholder="obecne hasło">
       <input id="newPass" type="password" placeholder="nowe hasło">
-      <button onclick="changePassword()">Zmień</button>
+      <button onclick="changePassword()">zmień</button>
     </div>
     <div id="msg"></div>
   </div>
 </div>
 
 <script>
+const CORNERS = '<span class="corners"><i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i></span>';
+document.querySelectorAll('.panel').forEach(p => p.insertAdjacentHTML('afterbegin', CORNERS));
+
+const WEEKDAYS = [['mon','PON'],['tue','WTO'],['wed','ŚRO'],['thu','CZW'],['fri','PIĄ'],['sat','SOB'],['sun','NDZ']];
+const weekbarsEl = document.getElementById('weekbars');
+WEEKDAYS.forEach(([key,label]) => {
+  weekbarsEl.insertAdjacentHTML('beforeend', `
+    <div class="weekbar" data-key="${key}">
+      <div class="track"><div class="fill" id="fill-${key}" style="height:0%"></div></div>
+      <input id="input-${key}" type="number" min="0" value="120">
+      <label>${label}</label>
+    </div>`);
+});
+
+function polarToCartesian(cx, cy, r, angleDeg) {
+  const a = (angleDeg - 90) * Math.PI / 180;
+  return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+}
+function describeArc(cx, cy, r, startAngle, endAngle) {
+  const start = polarToCartesian(cx, cy, r, endAngle);
+  const end = polarToCartesian(cx, cy, r, startAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
+}
+const GAUGE_START = -135, GAUGE_END = 135, CX = 100, CY = 100, R = 82;
+function statusColor(pct) {
+  if (pct <= 10) return 'var(--crit)';
+  if (pct <= 30) return 'var(--warn)';
+  return 'var(--accent)';
+}
+function renderGauge(pct) {
+  const svg = document.getElementById('gaugeSvg');
+  const color = statusColor(pct);
+  let ticks = '';
+  for (let i = 0; i <= 10; i++) {
+    const ang = GAUGE_START + (GAUGE_END - GAUGE_START) * i / 10;
+    const p1 = polarToCartesian(CX, CY, R + 7, ang);
+    const p2 = polarToCartesian(CX, CY, R + 13, ang);
+    ticks += `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="rgba(111,147,160,.5)" stroke-width="1.5"/>`;
+  }
+  const valueAngle = GAUGE_START + (GAUGE_END - GAUGE_START) * Math.min(100, pct) / 100;
+  svg.innerHTML = `
+    <defs>
+      <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="4" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    ${ticks}
+    <path d="${describeArc(CX, CY, R, GAUGE_START, GAUGE_END)}" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="10" stroke-linecap="round"/>
+    <path d="${describeArc(CX, CY, R, GAUGE_START, valueAngle)}" fill="none" stroke="${color}" stroke-width="10" stroke-linecap="round" filter="url(#glow)"/>
+  `;
+  const readout = document.querySelector('.gauge-readout');
+  readout.style.position = 'absolute';
+  readout.style.top = '50%'; readout.style.left = '50%'; readout.style.transform = 'translate(-50%,-40%)';
+  document.querySelector('.gauge-box').style.position = 'relative';
+  document.getElementById('gaugeNum').style.color = color;
+}
+
 async function api(path, opts) {
   const res = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts));
   if (res.status === 401) { location.href = '/login.html'; throw new Error('unauth'); }
   return res.json();
 }
-function fmtMin(sec) { return Math.floor(sec / 60) + ' min'; }
+function fmtMin(sec) { return Math.floor(sec / 60); }
 
 async function refresh() {
   const s = await api('/api/state');
+  document.getElementById('dateLabel').textContent = s.date + (s.blocked_now ? ' · GODZINA BLOKADY' : '');
+
+  const totalSec = s.daily_limit_minutes * 60 + s.bonus_seconds;
+  const pct = totalSec > 0 ? Math.max(0, 100 * s.remaining_seconds / totalSec) : 0;
+  renderGauge(pct);
+  document.getElementById('gaugeNum').textContent = fmtMin(s.remaining_seconds);
+
+  const pillWrap = document.getElementById('statusPillWrap');
+  let pillClass = 'ok', pillText = 'W normie';
+  if (s.blocked_now) { pillClass = 'crit'; pillText = 'Zablokowane (godziny)'; }
+  else if (s.remaining_seconds <= 0) { pillClass = 'crit'; pillText = 'Wyczerpane'; }
+  else if (s.remaining_seconds <= 300) { pillClass = 'warn'; pillText = 'Kończy się'; }
+  pillWrap.innerHTML = `<span class="status-pill ${pillClass}">● ${pillText}</span>`;
+
   document.getElementById('usedStat').textContent = `${fmtMin(s.used_seconds)} / ${s.daily_limit_minutes + Math.floor(s.bonus_seconds/60)} min`;
-  document.getElementById('remainingStat').textContent = `pozostało: ${fmtMin(s.remaining_seconds)}`;
-  const total = s.daily_limit_minutes * 60 + s.bonus_seconds;
-  const pct = total > 0 ? Math.min(100, 100 * s.used_seconds / total) : 100;
-  const bar = document.getElementById('bar');
-  bar.style.width = pct + '%';
-  bar.className = 'bar' + (s.remaining_seconds <= 300 ? ' low' : '');
+  document.getElementById('bonusStat').textContent = `${s.bonus_seconds >= 0 ? '+' : ''}${Math.floor(s.bonus_seconds/60)} min`;
+  document.getElementById('machineCount').textContent = s.machines.length;
 
   document.getElementById('targetUsername').value = s.target_username || '';
-  document.getElementById('dailyLimit').value = s.daily_limit_minutes;
   document.getElementById('agentToken').textContent = s.agent_token;
+
+  const todayKey = WEEKDAYS[(new Date().getDay() + 6) % 7][0];
+  WEEKDAYS.forEach(([key]) => {
+    const limitMin = s.weekday_limits[key];
+    document.getElementById(`input-${key}`).value = limitMin;
+    const usedMin = key === todayKey ? fmtMin(s.used_seconds) : 0;
+    const h = limitMin > 0 ? Math.min(100, 100 * usedMin / limitMin) : 0;
+    document.getElementById(`fill-${key}`).style.height = h + '%';
+    const wb = document.querySelector(`.weekbar[data-key="${key}"]`);
+    wb.classList.toggle('today', key === todayKey);
+  });
+
+  const rangesList = document.getElementById('rangesList');
+  rangesList.innerHTML = '';
+  (s.blocked_ranges.length ? s.blocked_ranges : [{start:'',end:''}]).forEach(r => addRangeRow(r.start, r.end));
 
   document.getElementById('machinesBody').innerHTML = s.machines.map(m =>
     `<tr><td>${m.hostname}</td><td>${m.os||''}</td><td>${new Date(m.last_seen).toLocaleString('pl-PL')}</td></tr>`
-  ).join('') || '<tr><td colspan="3" class="muted">brak danych</td></tr>';
+  ).join('') || '<tr><td colspan="3" class="sub">brak danych</td></tr>';
 
   document.getElementById('historyBody').innerHTML = s.history.map(h =>
     `<tr><td>${h.date}</td><td>${Math.floor(h.seconds_used/60)}</td></tr>`
-  ).join('') || '<tr><td colspan="2" class="muted">brak danych</td></tr>';
+  ).join('') || '<tr><td colspan="2" class="sub">brak danych</td></tr>';
 }
 
-async function saveConfig() {
-  await api('/api/config', { method: 'POST', body: JSON.stringify({
-    target_username: document.getElementById('targetUsername').value,
-    daily_limit_minutes: document.getElementById('dailyLimit').value,
-  })});
+function addRangeRow(start = '', end = '') {
+  const div = document.createElement('div');
+  div.className = 'range-row';
+  div.innerHTML = `<input type="time" class="rstart" value="${start}"> <span class="sub">—</span> <input type="time" class="rend" value="${end}"> <button class="ghost" onclick="this.parentElement.remove()">usuń</button>`;
+  document.getElementById('rangesList').appendChild(div);
+}
+
+async function saveWeekLimits() {
+  const limits = {};
+  WEEKDAYS.forEach(([key]) => { limits[key] = parseInt(document.getElementById(`input-${key}`).value || '0', 10); });
+  await api('/api/config', { method: 'POST', body: JSON.stringify({ weekday_limits: limits }) });
+  refresh();
+}
+async function saveRanges() {
+  const ranges = [...document.querySelectorAll('.range-row')].map(row => ({
+    start: row.querySelector('.rstart').value, end: row.querySelector('.rend').value,
+  })).filter(r => r.start && r.end);
+  await api('/api/config', { method: 'POST', body: JSON.stringify({ blocked_ranges: ranges }) });
+  refresh();
+}
+async function saveAccount() {
+  await api('/api/config', { method: 'POST', body: JSON.stringify({ target_username: document.getElementById('targetUsername').value }) });
   refresh();
 }
 async function addBonus(min) { await api('/api/bonus', { method: 'POST', body: JSON.stringify({ minutes: min }) }); refresh(); }
@@ -132,7 +336,7 @@ async function changePassword() {
   const res = await fetch('/api/change_password', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ current_password: document.getElementById('curPass').value, new_password: document.getElementById('newPass').value }) });
   const data = await res.json();
-  msg.style.color = res.ok ? '#4ade80' : '#f87171';
+  msg.style.color = res.ok ? 'var(--good)' : 'var(--crit)';
   msg.textContent = res.ok ? 'Hasło zmienione.' : (data.error || 'błąd');
   if (res.ok) { document.getElementById('curPass').value = ''; document.getElementById('newPass').value = ''; }
 }
