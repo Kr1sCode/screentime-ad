@@ -2,12 +2,12 @@
 
 Uruchom jako Domain Admin (RSAT `ActiveDirectory` module) **na/przeciw dc-example**.
 Tworzy jedno konto serwisowe z uprawnieniem **wyłącznie** do zmiany atrybutu
-`userAccountControl` na koncie syna — nic więcej (nie hasło, nie grupy, nie
+`userAccountControl` na koncie dziecka — nic więcej (nie hasło, nie grupy, nie
 inne atrybuty, nie inne konta).
 
 ```powershell
 # 0) Sprawdź prawdziwą nazwę NetBIOS domeny (podstaw niżej zamiast "CONTOSO"
-#    jeśli inna) i sAMAccountName konta syna:
+#    jeśli inna) i sAMAccountName konta dziecka:
 Get-ADDomain | Select-Object NetBIOSName, DistinguishedName
 
 # 1) Konto serwisowe
@@ -15,13 +15,13 @@ $pass = Read-Host -AsSecureString "Hasło dla svc-screentime"
 New-ADUser -Name "svc-screentime" -SamAccountName "svc-screentime" `
   -AccountPassword $pass -Enabled $true -PasswordNeverExpires $true
 
-# 2) Delegacja: TYLKO prawo do zapisu userAccountControl na koncie syna
-#    (podstaw prawdziwy sAMAccountName syna)
-$sonDN  = (Get-ADUser -Identity "SAMACCOUNTNAME_SYNA").DistinguishedName
-dsacls "$sonDN" /G "CONTOSO\svc-screentime:WP;userAccountControl"
+# 2) Delegacja: TYLKO prawo do zapisu userAccountControl na koncie dziecka
+#    (podstaw prawdziwy sAMAccountName dziecka)
+$childDN = (Get-ADUser -Identity "SAMACCOUNTNAME_DZIECKA").DistinguishedName
+dsacls "$childDN" /G "CONTOSO\svc-screentime:WP;userAccountControl"
 
 # 3) Weryfikacja delegacji
-dsacls "$sonDN" | Select-String "svc-screentime"
+dsacls "$childDN" | Select-String "svc-screentime"
 ```
 
 ## Dane do panelu (Twarda blokada konta w AD)

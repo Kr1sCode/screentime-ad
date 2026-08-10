@@ -65,7 +65,7 @@ zalogować się ponownie — agent po prostu wyloguje znowu przy najbliższym
 cyklu. Żeby zablokować logowanie NIGDZIE w domenie aż do resetu puli, włącz
 w panelu wyłączanie konta w AD przez LDAP — patrz
 [`docs/ad-lock-setup.md`](docs/ad-lock-setup.md) (wymaga dedykowanego konta
-serwisowego z uprawnieniem tylko do `userAccountControl` na koncie syna).
+serwisowego z uprawnieniem tylko do `userAccountControl` na koncie dziecka).
 
 ## Ograniczenia (świadomie, poziom homelab)
 

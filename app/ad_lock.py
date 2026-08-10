@@ -1,5 +1,5 @@
 """Twarda blokada logowania: wyłącza/włącza konto w AD przez LDAP, żeby po
-wyczerpaniu puli syn nie mógł się zalogować NIGDZIE w domenie (nie tylko
+wyczerpaniu puli dziecko nie mogło się zalogować NIGDZIE w domenie (nie tylko
 dostać wylogowanego z już otwartej sesji — to robią agenty, osobno)."""
 import ssl
 
