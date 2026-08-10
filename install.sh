@@ -30,6 +30,7 @@ python3 -m venv /opt/screentime-ad/venv
 rm -rf "$tmp"
 
 systemctl daemon-reload
-systemctl enable --now screentime-ad.service
+systemctl enable screentime-ad.service
+systemctl restart screentime-ad.service
 
 echo "==> gotowe. Panel: http://$(hostname -I | awk '{print $1}')/  (login: admin / admin — ZMIEŃ w panelu)"

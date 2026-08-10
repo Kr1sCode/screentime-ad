@@ -102,6 +102,13 @@ def test_should_not_be_locked_with_quota_and_no_curfew():
     assert not core.should_be_locked(conn)
 
 
+def test_weekday_limits_clamp_negative_to_zero():
+    conn = make_conn()
+    core.set_weekday_limits(conn, {"mon": -45, "tue": 120, "wed": 120, "thu": 120,
+                                     "fri": 120, "sat": 120, "sun": 120})
+    assert core.get_weekday_limits(conn)["mon"] == 0
+
+
 if __name__ == "__main__":
     tests = [v for k, v in list(globals().items()) if k.startswith("test_")]
     for t in tests:

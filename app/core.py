@@ -34,7 +34,7 @@ def get_weekday_limits(conn: sqlite3.Connection) -> dict:
 
 
 def set_weekday_limits(conn: sqlite3.Connection, limits: dict) -> None:
-    clean = {k: int(limits.get(k, 120)) for k in WEEKDAY_KEYS}
+    clean = {k: max(0, int(limits.get(k, 120))) for k in WEEKDAY_KEYS}
     set_config(conn, "weekday_limits", json.dumps(clean))
 
 
