@@ -20,7 +20,7 @@
     --mono: ui-monospace, "JetBrains Mono", "SF Mono", Consolas, monospace;
   }
   * { box-sizing: border-box; }
-  html, body { height: 100%; }
+  html, body { height: 100%; overflow: hidden; }
   body {
     margin: 0;
     font-family: system-ui, sans-serif;
@@ -29,7 +29,6 @@
       radial-gradient(ellipse 900px 500px at 15% -10%, rgba(34,211,238,0.10), transparent 60%),
       radial-gradient(ellipse 700px 500px at 100% 10%, rgba(139,92,246,0.08), transparent 60%),
       var(--bg);
-    padding: 2.4rem 1.5rem 4rem;
     position: relative;
   }
   body::before {
@@ -42,9 +41,16 @@
     pointer-events: none;
     mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black, transparent 75%);
   }
-  .wrap { max-width: 920px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.4rem; position: relative; }
+  .page {
+    max-width: 920px; margin: 0 auto; height: 100%;
+    padding: 2.4rem 1.5rem 1.4rem;
+    display: flex; flex-direction: column; gap: 1.2rem;
+    position: relative;
+  }
+  .scroll-area { flex: 1; min-height: 0; overflow-y: auto; }
+  .wrap { display: flex; flex-direction: column; gap: 1.4rem; position: relative; padding-bottom: .3rem; }
 
-  header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--panel-border); padding-bottom: .8rem; }
+  header { flex-shrink: 0; display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--panel-border); padding-bottom: .8rem; }
   h1 { font-size: 1rem; margin: 0; letter-spacing: .3em; text-transform: uppercase; color: var(--accent); text-shadow: 0 0 12px rgba(34,211,238,.6); }
   .sub { font-family: var(--mono); font-size: .7rem; color: var(--text-dim); letter-spacing: .1em; }
 
@@ -100,10 +106,12 @@
   .ranges { display: flex; flex-direction: column; gap: .5rem; }
   .range-row { display: flex; gap: .5rem; align-items: center; }
   #msg { min-height: 1.2rem; font-family: var(--mono); font-size: .8rem; color: var(--good); }
+
+  .footer-panel { flex-shrink: 0; text-align: center; padding: .8rem 1rem; font-family: var(--mono); font-size: .7rem; color: var(--text-dim); letter-spacing: .1em; }
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="page">
   <header>
     <h1>screentime-ad</h1>
     <div class="row">
@@ -111,6 +119,9 @@
       <button class="ghost" onclick="logout()">wyloguj</button>
     </div>
   </header>
+
+  <div class="scroll-area">
+  <div class="wrap">
 
   <div class="panel">
     <h2>Status dzisiaj</h2>
@@ -188,6 +199,11 @@
     </div>
     <div id="msg"></div>
   </div>
+
+  </div>
+  </div>
+
+  <div class="panel footer-panel">© Wszystkie prawa zastrzeżone - KrzysztofGawkowski.pl</div>
 </div>
 
 <script>
