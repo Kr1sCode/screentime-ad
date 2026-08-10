@@ -58,6 +58,15 @@ Dla całej floty domenowej: ten sam skrypt jako **GPO Computer Startup
 Script** (SYSVOL) — jest idempotentny, więc na maszynach gdzie usługa już
 działa nic nie robi; nowe maszyny dostają agenta przy najbliższym boocie.
 
+## Twarda blokada konta w AD (opcjonalnie)
+
+Sam agent wylogowuje z otwartej sesji, ale nic nie stoi na przeszkodzie żeby
+zalogować się ponownie — agent po prostu wyloguje znowu przy najbliższym
+cyklu. Żeby zablokować logowanie NIGDZIE w domenie aż do resetu puli, włącz
+w panelu wyłączanie konta w AD przez LDAP — patrz
+[`docs/ad-lock-setup.md`](docs/ad-lock-setup.md) (wymaga dedykowanego konta
+serwisowego z uprawnieniem tylko do `userAccountControl` na koncie syna).
+
 ## Ograniczenia (świadomie, poziom homelab)
 
 - Brak twardej ochrony przed lokalnym adminem zatrzymującym usługę.
