@@ -175,6 +175,33 @@
   </div>
 
   <div class="panel">
+    <h2>Twarda blokada konta w AD</h2>
+    <p class="sub" style="margin-bottom:1rem">Gdy pula się skończy (albo trwają godziny blokady), konto zostaje wyłączone w Active Directory — syn nie zaloguje się nigdzie w domenie, nie tylko dostanie wylogowanego z otwartej sesji.</p>
+    <div class="row">
+      <label class="sub">host LDAPS (np. 192.0.2.10)</label>
+      <input id="ldapHost" placeholder="192.0.2.10">
+    </div>
+    <div class="row" style="margin-top:.6rem">
+      <label class="sub">base DN</label>
+      <input id="ldapBaseDn" placeholder="DC=contoso,DC=..." style="min-width:260px">
+    </div>
+    <div class="row" style="margin-top:.6rem">
+      <label class="sub">bind DN (konto serwisowe)</label>
+      <input id="ldapBindDn" placeholder="CN=svc-screentime,CN=Users,DC=..." style="min-width:300px">
+    </div>
+    <div class="row" style="margin-top:.6rem">
+      <label class="sub">hasło bind</label>
+      <input id="ldapBindPassword" type="password" placeholder="(zostaw puste żeby nie zmieniać)">
+    </div>
+    <div class="row" style="margin-top:.8rem">
+      <label class="sub"><input type="checkbox" id="adLockEnabled" style="width:auto"> włącz twardą blokadę AD</label>
+      <button onclick="saveLdapConfig()">zapisz</button>
+      <button class="ghost" onclick="testLdapConfig()">testuj połączenie</button>
+    </div>
+    <div id="ldapMsg" class="sub" style="margin-top:.6rem"></div>
+  </div>
+
+  <div class="panel">
     <h2>Maszyny</h2>
     <table>
       <thead><tr><th>Hostname</th><th>OS</th><th>Ostatnio widziano</th></tr></thead>
@@ -321,6 +348,14 @@ function renderConfigForms(s) {
   const rangesList = document.getElementById('rangesList');
   rangesList.innerHTML = '';
   (s.blocked_ranges.length ? s.blocked_ranges : [{start:'',end:''}]).forEach(r => addRangeRow(r.start, r.end));
+
+  document.getElementById('ldapHost').value = s.ldap_host || '';
+  document.getElementById('ldapBaseDn').value = s.ldap_base_dn || '';
+  document.getElementById('ldapBindDn').value = s.ldap_bind_dn || '';
+  document.getElementById('adLockEnabled').checked = !!s.ad_lock_enabled;
+  const ldapMsg = document.getElementById('ldapMsg');
+  ldapMsg.textContent = s.ldap_configured ? 'skonfigurowane' : 'brak pełnej konfiguracji LDAP';
+  ldapMsg.style.color = s.ldap_configured ? 'var(--good)' : 'var(--text-dim)';
 }
 
 async function refresh() {
@@ -356,6 +391,29 @@ async function saveAccount() {
   await api('/api/config', { method: 'POST', body: JSON.stringify({ target_username: document.getElementById('targetUsername').value }) });
   refresh();
 }
+async function saveLdapConfig() {
+  const body = {
+    ldap_host: document.getElementById('ldapHost').value,
+    ldap_base_dn: document.getElementById('ldapBaseDn').value,
+    ldap_bind_dn: document.getElementById('ldapBindDn').value,
+    ad_lock_enabled: document.getElementById('adLockEnabled').checked,
+  };
+  const pass = document.getElementById('ldapBindPassword').value;
+  if (pass) body.ldap_bind_password = pass;
+  await api('/api/ldap_config', { method: 'POST', body: JSON.stringify(body) });
+  document.getElementById('ldapBindPassword').value = '';
+  refresh();
+}
+async function testLdapConfig() {
+  const msg = document.getElementById('ldapMsg');
+  msg.textContent = 'testuję...';
+  msg.style.color = 'var(--text-dim)';
+  const res = await fetch('/api/ldap_test', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+  const data = await res.json();
+  msg.style.color = res.ok ? 'var(--good)' : 'var(--crit)';
+  msg.textContent = res.ok ? data.note : data.error;
+}
+
 async function addBonus(min) { await api('/api/bonus', { method: 'POST', body: JSON.stringify({ minutes: min }) }); refreshLive(); }
 async function lockNow() { if (confirm('Na pewno zablokować teraz?')) { await api('/api/lock_now', { method: 'POST' }); refreshLive(); } }
 async function logout() { await api('/api/logout', { method: 'POST' }); location.href = '/login.html'; }

@@ -78,6 +78,10 @@ def blocked_range_starts_soon(conn: sqlite3.Connection, within_seconds: int = 30
     return False
 
 
+def should_be_locked(conn: sqlite3.Connection) -> bool:
+    return is_blocked_now(conn) or remaining_seconds(conn) <= 0
+
+
 def get_daily_limit_seconds(conn: sqlite3.Connection, date: str | None = None) -> int:
     date = date or today_str()
     weekday = datetime.strptime(date, "%Y-%m-%d").weekday()  # 0=Mon .. 6=Sun

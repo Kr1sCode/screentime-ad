@@ -5,7 +5,9 @@ Wants=network-online.target
 
 [Service]
 WorkingDirectory=/opt/screentime-ad
-ExecStart=/opt/screentime-ad/venv/bin/gunicorn -w 2 -b 0.0.0.0:80 --timeout 120 web:app
+# -w 1: web:app uruchamia w tle wątek synchronizujący blokadę konta w AD;
+# więcej workerów = ten sam sync działający równolegle N razy.
+ExecStart=/opt/screentime-ad/venv/bin/gunicorn -w 1 -b 0.0.0.0:80 --timeout 120 web:app
 Restart=on-failure
 RestartSec=3
 

@@ -73,6 +73,11 @@ def init_db() -> None:
         "weekday_limits": '{"mon":120,"tue":120,"wed":120,"thu":120,"fri":120,"sat":180,"sun":180}',
         "blocked_ranges": "[]",
         "agent_token": secrets.token_hex(24),
+        "ad_lock_enabled": "0",
+        "ldap_host": "",
+        "ldap_base_dn": "",
+        "ldap_bind_dn": "",
+        "ldap_bind_password": "",
     }
     for k, v in defaults.items():
         conn.execute("INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", (k, v))

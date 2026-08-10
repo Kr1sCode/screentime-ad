@@ -1,15 +1,51 @@
 import functools
 import secrets
+import sys
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
 from flask import Flask, jsonify, redirect, request, send_from_directory, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import ad_lock
 import core
 import db
 
 db.init_db()
+
+AD_SYNC_INTERVAL = 30
+
+
+def _ldap_cfg(conn):
+    cfg = {
+        "ldap_host": core.get_config(conn, "ldap_host", ""),
+        "base_dn": core.get_config(conn, "ldap_base_dn", ""),
+        "bind_dn": core.get_config(conn, "ldap_bind_dn", ""),
+        "bind_password": core.get_config(conn, "ldap_bind_password", ""),
+    }
+    return cfg if all(cfg.values()) else None
+
+
+def _ad_sync_loop():
+    while True:
+        try:
+            conn = db.get_conn()
+            if core.get_config(conn, "ad_lock_enabled", "0") == "1":
+                target = core.get_config(conn, "target_username", "")
+                cfg = _ldap_cfg(conn)
+                if target and cfg:
+                    locked = core.should_be_locked(conn)
+                    if ad_lock.sync_account_disabled(cfg, target, locked):
+                        print(f"[ad_lock] konto {target}: {'ZABLOKOWANE' if locked else 'odblokowane'}")
+            conn.close()
+        except Exception as e:
+            print(f"[ad_lock] błąd synchronizacji: {e}", file=sys.stderr)
+        time.sleep(AD_SYNC_INTERVAL)
+
+
+threading.Thread(target=_ad_sync_loop, daemon=True).start()
 
 SECRET_FILE = db.DATA_DIR / "flask_secret.key"
 if not SECRET_FILE.exists():
@@ -118,9 +154,48 @@ def state():
         machines=core.list_machines(conn),
         history=core.history(conn),
         agent_token=core.get_config(conn, "agent_token"),
+        ad_lock_enabled=core.get_config(conn, "ad_lock_enabled", "0") == "1",
+        ldap_configured=_ldap_cfg(conn) is not None,
+        ldap_host=core.get_config(conn, "ldap_host", ""),
+        ldap_base_dn=core.get_config(conn, "ldap_base_dn", ""),
+        ldap_bind_dn=core.get_config(conn, "ldap_bind_dn", ""),
     )
     conn.close()
     return jsonify(result)
+
+
+@app.post("/api/ldap_config")
+@login_required
+def set_ldap_config():
+    data = request.get_json(force=True)
+    conn = db.get_conn()
+    for key in ("ldap_host", "ldap_base_dn", "ldap_bind_dn"):
+        if key in data:
+            core.set_config(conn, key, str(data[key]).strip())
+    if data.get("ldap_bind_password"):
+        core.set_config(conn, "ldap_bind_password", data["ldap_bind_password"])
+    if "ad_lock_enabled" in data:
+        core.set_config(conn, "ad_lock_enabled", "1" if data["ad_lock_enabled"] else "0")
+    conn.close()
+    return jsonify(ok=True)
+
+
+@app.post("/api/ldap_test")
+@login_required
+def test_ldap_config():
+    conn = db.get_conn()
+    target = core.get_config(conn, "target_username", "")
+    cfg = _ldap_cfg(conn)
+    conn.close()
+    if not target:
+        return jsonify(error="najpierw ustaw konto AD (sAMAccountName) w Konfiguracji konta"), 400
+    if not cfg:
+        return jsonify(error="uzupełnij wszystkie pola LDAP"), 400
+    try:
+        changed = ad_lock.sync_account_disabled(cfg, target, False)
+        return jsonify(ok=True, note="połączenie i uprawnienia OK" + (" (konto odblokowane)" if changed else ""))
+    except Exception as e:
+        return jsonify(error=str(e)), 400
 
 
 @app.post("/api/config")

@@ -91,6 +91,17 @@ def test_blocked_range_starts_soon_warns():
     assert not core.blocked_range_starts_soon(conn, 300, datetime(2026, 8, 10, 21, 30, tzinfo=core.TZ))
 
 
+def test_should_be_locked_when_quota_exhausted():
+    conn = make_conn()
+    core.add_used_seconds(conn, core.today_str(), 120 * 60)
+    assert core.should_be_locked(conn)
+
+
+def test_should_not_be_locked_with_quota_and_no_curfew():
+    conn = make_conn()
+    assert not core.should_be_locked(conn)
+
+
 if __name__ == "__main__":
     tests = [v for k, v in list(globals().items()) if k.startswith("test_")]
     for t in tests:
