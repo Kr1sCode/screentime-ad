@@ -1,20 +1,22 @@
-"""screentime-ad agent (Windows). Jeden plik, tylko stdlib + ctypes (WTS API
-z wtsapi32.dll) — bez pywin32, więc wystarczy zwykły python.exe na PATH.
+"""screentime-ad agent (Windows). Tylko stdlib + ctypes (WTS API z
+wtsapi32.dll) — bez pywin32. Zamrożony przez PyInstaller, instalowany jako
+usługa (NSSM) na SYSTEM, więc widzi WSZYSTKIE sesje na maszynie niezależnie
+od tego kto jest akurat zalogowany.
 
-Uruchamiany jako usługa (NSSM) na SYSTEM, więc widzi WSZYSTKIE sesje na
-maszynie i działa niezależnie od tego kto jest akurat zalogowany. Co godzinę
-sprawdza najnowszy commit na GitHubie dotykający agent_windows/ — jeśli inny
-niż zainstalowany, podmienia pliki i restartuje się (os.execv/usługa wraca
-przez NSSM Restart=always), więc numer wersji nie ma znaczenia.
+Auto-update: co godzinę sprawdza najnowszy release na GitHubie, porównuje
+tag z lokalnym VERSION obok exe. Jeśli nowszy — ściąga installer.exe z tego
+release'a, weryfikuje jego sha256 względem SHA256SUMS.txt z tego samego
+release'a, i uruchamia go w trybie cichym (Inno Setup sam zatrzyma usługę,
+podmieni pliki, zainstaluje na nowo, wystartuje). Proces odpalający installer
+MUSI być detached — Inno zabija tę usługę w trakcie instalacji, więc zwykłe
+dziecko zginęłoby razem z rodzicem zanim instalacja się skończy.
 """
 import ctypes
-import io
+import hashlib
 import json
 import os
-import shutil
 import subprocess
 import sys
-import tarfile
 import tempfile
 import time
 import urllib.error
@@ -23,11 +25,11 @@ from ctypes import wintypes
 from pathlib import Path
 
 REPO = "Kr1sCode/screentime-ad"
-BRANCH = "main"
-AGENT_SUBDIR = "agent_windows"
-INSTALL_DIR = Path(__file__).resolve().parent
-SHA_FILE = INSTALL_DIR / ".installed_sha"
-CONFIG_PATH = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "screentime-ad" / "agent.json"
+INSTALL_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+VERSION_FILE = INSTALL_DIR / "version.txt"
+DATA_DIR = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "screentime-ad"
+CONFIG_PATH = DATA_DIR / "agent.json"
+STATUS_PATH = DATA_DIR / "status.json"
 
 POLL_INTERVAL = 15
 HEARTBEAT_INTERVAL = 60
@@ -110,37 +112,71 @@ def logoff_session(session_id: int) -> None:
     wtsapi32.WTSLogoffSession(WTS_CURRENT_SERVER_HANDLE, session_id, False)
 
 
-# ---------- auto-update ----------
+# ---------- auto-update (GitHub Releases, hash-verified) ----------
 
-def _latest_sha() -> str:
-    url = f"https://api.github.com/repos/{REPO}/commits?sha={BRANCH}&path={AGENT_SUBDIR}&per_page=1"
-    with urllib.request.urlopen(url, timeout=15) as r:
-        data = json.loads(r.read())
-    return data[0]["sha"]
+def _installed_version() -> str:
+    return VERSION_FILE.read_text().strip() if VERSION_FILE.exists() else "0.0.0"
 
 
-def check_and_update() -> bool:
+def _latest_release() -> dict:
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{REPO}/releases/latest",
+        headers={"Accept": "application/vnd.github+json"},
+    )
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read())
+
+
+def check_and_update() -> None:
     try:
-        sha = _latest_sha()
-    except Exception:
-        return False
-    installed = SHA_FILE.read_text().strip() if SHA_FILE.exists() else ""
-    if sha == installed:
-        return False
-    try:
-        tarball_url = f"https://github.com/{REPO}/archive/{sha}.tar.gz"
-        with urllib.request.urlopen(tarball_url, timeout=30) as r:
+        release = _latest_release()
+        tag = release["tag_name"].lstrip("v")
+        if tag == _installed_version():
+            return
+        assets = {a["name"]: a["browser_download_url"] for a in release["assets"]}
+        installer_name = next(n for n in assets if n.endswith(".exe"))
+        sums_url = assets.get("SHA256SUMS.txt")
+        if not sums_url:
+            raise RuntimeError("release bez SHA256SUMS.txt — nie ufam nieweryfikowalnemu instalatorowi")
+
+        with urllib.request.urlopen(sums_url, timeout=15) as r:
+            sums_text = r.read().decode()
+        expected = next(
+            line.split()[0] for line in sums_text.splitlines() if line.strip().endswith(installer_name)
+        )
+
+        tmp_dir = Path(tempfile.mkdtemp())
+        installer_path = tmp_dir / installer_name
+        with urllib.request.urlopen(assets[installer_name], timeout=60) as r:
             data = r.read()
-        with tempfile.TemporaryDirectory() as tmp:
-            tarfile.open(fileobj=io.BytesIO(data)).extractall(tmp)
-            src = next(Path(tmp).glob(f"*/{AGENT_SUBDIR}"))
-            for item in src.iterdir():
-                shutil.copy2(item, INSTALL_DIR / item.name)
-        SHA_FILE.write_text(sha)
-        return True
+        actual = hashlib.sha256(data).hexdigest()
+        if actual != expected:
+            raise RuntimeError(f"sha256 mismatch: pobrany={actual} oczekiwany={expected}")
+        installer_path.write_bytes(data)
+
+        print(f"aktualizacja {_installed_version()} -> {tag}, uruchamiam installer w tle...")
+        # Detached: Inno Setup zatrzyma TĘ usługę w trakcie instalacji, więc
+        # zwykłe subprocess.run() zginęłoby razem z rodzicem w połowie.
+        subprocess.Popen(
+            [str(installer_path), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-"],
+            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+            close_fds=True,
+        )
     except Exception as e:
         print(f"aktualizacja nieudana: {e}", file=sys.stderr)
-        return False
+
+
+# ---------- status dla ikony w trayu ----------
+
+def write_status(sessions_status: dict) -> None:
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        STATUS_PATH.write_text(json.dumps({
+            "updated_at": time.time(),
+            "sessions": sessions_status,
+        }))
+    except Exception:
+        pass
 
 
 # ---------- serwer ----------
@@ -172,9 +208,7 @@ def main() -> None:
     while True:
         if time.time() - last_update_check >= UPDATE_CHECK_INTERVAL:
             last_update_check = time.time()
-            if check_and_update():
-                print("nowa wersja pobrana, restartuję...")
-                os.execv(sys.executable, [sys.executable] + sys.argv)
+            check_and_update()
 
         sessions = list_active_sessions()
         for s in sessions:
@@ -182,13 +216,16 @@ def main() -> None:
 
         if time.time() - last_heartbeat >= HEARTBEAT_INTERVAL:
             last_heartbeat = time.time()
+            status_by_user = {}
             for s in sessions:
                 sid = s["session_id"]
                 delta = accumulated.pop(sid, 0)
+                connected = True
                 try:
                     resp = heartbeat(cfg, s["username"], delta)
                     last_remaining_cache[sid] = resp["remaining_seconds"]
                 except (urllib.error.URLError, OSError):
+                    connected = False
                     prev = last_remaining_cache.get(sid)
                     remaining = max(0, prev - delta) if prev is not None else None
                     last_remaining_cache[sid] = remaining
@@ -206,6 +243,14 @@ def main() -> None:
                     warned[sid] = True
                 if resp.get("force_logout"):
                     logoff_session(sid)
+
+                status_by_user[s["username"]] = {
+                    "connected": connected,
+                    "remaining_seconds": remaining,
+                    "warn": bool(resp.get("warn_5min")),
+                    "locked": bool(resp.get("force_logout")),
+                }
+            write_status(status_by_user)
 
         time.sleep(POLL_INTERVAL)
 

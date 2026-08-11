@@ -5,3 +5,8 @@ venv/
 *.db
 *.key
 .installed_sha
+dist/
+build/
+*.spec
+installer/nssm.exe
+installer/Output/
