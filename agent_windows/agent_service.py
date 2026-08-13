@@ -127,7 +127,13 @@ def _latest_release() -> dict:
         return json.loads(r.read())
 
 
+_update_launched = False
+
+
 def check_and_update() -> None:
+    global _update_launched
+    if _update_launched:
+        return
     try:
         release = _latest_release()
         tag = release["tag_name"].lstrip("v")
@@ -162,6 +168,11 @@ def check_and_update() -> None:
             creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
             close_fds=True,
         )
+        # Instalator i tak zatrzyma ten proces w trakcie podmiany plików —
+        # nie ma sensu odpalać drugiego instalatora w międzyczasie (np. po
+        # korekcie zegara przez NTP), bo oba na raz zakleszczają się próbując
+        # zatrzymać tę samą usługę.
+        _update_launched = True
     except Exception as e:
         print(f"aktualizacja nieudana: {e}", file=sys.stderr)
 
