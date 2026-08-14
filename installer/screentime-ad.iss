@@ -48,6 +48,15 @@ begin
   Exec(Cmd, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
+// Osobna wersja bez czekania — tray.exe zyje az do wylogowania, ewWaitUntilTerminated
+// zawiesiloby instalator na dobre.
+procedure ShellExecNoWait(Cmd, Params: String);
+var
+  ResultCode: Integer;
+begin
+  Exec(Cmd, Params, '', SW_SHOWNORMAL, ewNoWait, ResultCode);
+end;
+
 procedure InitializeWizard;
 begin
   ServerPage := CreateInputQueryPage(wpSelectDir,
@@ -77,9 +86,14 @@ begin
   if CurStep = ssInstall then
   begin
     // Usluga trzyma otwarty plik .exe — kopiowanie [Files] wisi na
-    // abort/retry jesli nie zatrzymamy jej PRZED nadpisaniem.
+    // abort/retry jesli nie zatrzymamy jej PRZED nadpisaniem. NssmExec('stop')
+    // czasem nie zdąża/nie potrafi zabić procesu (np. utknął w sieciowym
+    // I/O) — taskkill /F to twardy fallback, żeby reinstalacja nie wisiała.
     if FileExists(ExpandConstant('{app}\nssm.exe')) then
+    begin
       NssmExec('stop ' + SvcName);
+      ShellExec(ExpandConstant('{sys}\taskkill.exe'), '/IM screentime-ad-agent.exe /F');
+    end;
   end;
 
   if CurStep = ssPostInstall then
@@ -118,6 +132,13 @@ begin
     ShellExec(ExpandConstant('{sys}\schtasks.exe'),
       '/Create /TN "' + TaskName + '" /TR "\"' + ExpandConstant('{app}\tray\screentime-ad-tray.exe') + '\"" ' +
       '/SC ONLOGON /RL LIMITED /RU "BUILTIN\Users" /F');
+
+    // Trigger ONLOGON odpali sie dopiero przy nastepnym zalogowaniu — zeby
+    // instalujacy zobaczyl ikone od razu (bez wylogowania), startujemy ja
+    // tez teraz, w biezacej sesji. Najpierw dobijamy ewentualny stary
+    // proces po starej instalacji (inna sciezka pliku = stary uchwyt zombie).
+    ShellExec(ExpandConstant('{sys}\taskkill.exe'), '/IM screentime-ad-tray.exe /F');
+    ShellExecNoWait(ExpandConstant('{app}\tray\screentime-ad-tray.exe'), '');
   end;
 end;
 
