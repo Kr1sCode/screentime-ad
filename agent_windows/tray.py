@@ -28,6 +28,7 @@ STALE_AFTER_SECONDS = 180
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 shell32 = ctypes.WinDLL("shell32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
 
 WM_TIMER = 0x0113
 WM_DESTROY = 0x0002
@@ -37,6 +38,10 @@ NIF_MESSAGE, NIF_ICON, NIF_TIP = 0x1, 0x2, 0x4
 IDI_APPLICATION, IDI_WARNING, IDI_ERROR = 32512, 32515, 32513
 WM_APP = 0x8000
 WM_TRAYICON = WM_APP + 1
+DT_CENTER, DT_VCENTER, DT_SINGLELINE = 0x1, 0x4, 0x20
+ICON_SIZE = 16
+# ARGB (alpha w najwyższym bajcie), kolejność kolorów w pamięci to BGRA.
+BG_COLOR = {"ok": 0xFF2563EB, "warn": 0xFFF59E0B, "crit": 0xFFDC2626, "off": 0xFF6B7280}
 
 
 class WNDCLASSW(ctypes.Structure):
@@ -66,6 +71,36 @@ class NOTIFYICONDATA(ctypes.Structure):
     ]
 
 
+class BITMAPINFOHEADER(ctypes.Structure):
+    _fields_ = [
+        ("biSize", wintypes.DWORD),
+        ("biWidth", ctypes.c_long),
+        ("biHeight", ctypes.c_long),
+        ("biPlanes", wintypes.WORD),
+        ("biBitCount", wintypes.WORD),
+        ("biCompression", wintypes.DWORD),
+        ("biSizeImage", wintypes.DWORD),
+        ("biXPelsPerMeter", ctypes.c_long),
+        ("biYPelsPerMeter", ctypes.c_long),
+        ("biClrUsed", wintypes.DWORD),
+        ("biClrImportant", wintypes.DWORD),
+    ]
+
+
+class BITMAPINFO(ctypes.Structure):
+    _fields_ = [("bmiHeader", BITMAPINFOHEADER), ("bmiColors", wintypes.DWORD * 3)]
+
+
+class ICONINFO(ctypes.Structure):
+    _fields_ = [
+        ("fIcon", wintypes.BOOL),
+        ("xHotspot", wintypes.DWORD),
+        ("yHotspot", wintypes.DWORD),
+        ("hbmMask", wintypes.HBITMAP),
+        ("hbmColor", wintypes.HBITMAP),
+    ]
+
+
 WNDPROC = ctypes.WINFUNCTYPE(ctypes.c_long, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
 
 # Bez jawnych restype/argtypes ctypes zakłada 32-bit int zwrotny — na x64
@@ -80,6 +115,35 @@ kernel32.GetModuleHandleW.restype = wintypes.HMODULE
 kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
 shell32.Shell_NotifyIconW.argtypes = [wintypes.DWORD, ctypes.POINTER(NOTIFYICONDATA)]
 shell32.Shell_NotifyIconW.restype = wintypes.BOOL
+gdi32.CreateDIBSection.restype = wintypes.HBITMAP
+gdi32.CreateDIBSection.argtypes = [
+    wintypes.HDC, ctypes.POINTER(BITMAPINFO), wintypes.UINT,
+    ctypes.POINTER(ctypes.c_void_p), wintypes.HANDLE, wintypes.DWORD,
+]
+user32.CreateIconIndirect.restype = wintypes.HICON
+user32.CreateIconIndirect.argtypes = [ctypes.POINTER(ICONINFO)]
+user32.DrawTextW.argtypes = [wintypes.HDC, wintypes.LPCWSTR, ctypes.c_int, ctypes.POINTER(wintypes.RECT), wintypes.UINT]
+# Te same 32-bit-int-truncates-wskaźnik pułapki dotyczą też uchwytów GDI
+# użytych w make_icon() — bez jawnych restype HDC/HBITMAP/HFONT obcinają się
+# na x64 dokładnie tak samo jak HICON/HWND wyżej.
+user32.GetDC.restype = wintypes.HDC
+user32.GetDC.argtypes = [wintypes.HWND]
+user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+user32.DestroyIcon.argtypes = [wintypes.HICON]
+gdi32.CreateCompatibleDC.restype = wintypes.HDC
+gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+gdi32.DeleteDC.argtypes = [wintypes.HDC]
+gdi32.SelectObject.restype = wintypes.HGDIOBJ
+gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
+gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+gdi32.SetBkMode.argtypes = [wintypes.HDC, ctypes.c_int]
+gdi32.SetTextColor.argtypes = [wintypes.HDC, wintypes.COLORREF]
+gdi32.CreateFontW.restype = wintypes.HFONT
+gdi32.CreateFontW.argtypes = [
+    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+    wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD,
+    wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, wintypes.LPCWSTR,
+]
 
 nid = NOTIFYICONDATA()
 
@@ -93,43 +157,106 @@ def _log(msg: str) -> None:
         pass
 
 
-def make_icon(kind: str):
-    ids = {"ok": IDI_APPLICATION, "warn": IDI_WARNING, "crit": IDI_ERROR, "off": IDI_APPLICATION}
-    return user32.LoadIconW(None, ctypes.cast(ids.get(kind, IDI_APPLICATION), wintypes.LPCWSTR))
+def make_icon(kind: str, minutes: int | None = None):
+    """Ikona 16x16 z tłem wg statusu i liczbą pozostałych minut narysowaną
+    GDI (DIBSection 32bpp) zamiast systemowej ikonki — dzięki temu widać
+    licznik bez najeżdżania myszką na tray. Maska AND zostaje wyzerowana
+    (w całości nieprzezroczysta), bo kolor+alfa daje już pełną kontrolę."""
+    if minutes is None:
+        ids = {"ok": IDI_APPLICATION, "warn": IDI_WARNING, "crit": IDI_ERROR, "off": IDI_APPLICATION}
+        return user32.LoadIconW(None, ctypes.cast(ids.get(kind, IDI_APPLICATION), wintypes.LPCWSTR))
+
+    text = str(min(minutes, 99)) if minutes >= 0 else "0"
+    size = ICON_SIZE
+    hdc_screen = user32.GetDC(None)
+    hdc = gdi32.CreateCompatibleDC(hdc_screen)
+
+    bmi = BITMAPINFO()
+    bmi.bmiHeader.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+    bmi.bmiHeader.biWidth = size
+    bmi.bmiHeader.biHeight = -size  # top-down, żeby nie odwracać tekstu
+    bmi.bmiHeader.biPlanes = 1
+    bmi.bmiHeader.biBitCount = 32
+    bmi.bmiHeader.biCompression = 0  # BI_RGB
+
+    bits_ptr = ctypes.c_void_p()
+    hbm_color = gdi32.CreateDIBSection(hdc, ctypes.byref(bmi), 0, ctypes.byref(bits_ptr), None, 0)
+    old_bm = gdi32.SelectObject(hdc, hbm_color)
+
+    pixels = ctypes.cast(bits_ptr, ctypes.POINTER(ctypes.c_uint32 * (size * size))).contents
+    bg = BG_COLOR.get(kind, BG_COLOR["off"])
+    for i in range(size * size):
+        pixels[i] = bg
+
+    gdi32.SetBkMode(hdc, 1)  # TRANSPARENT — GDI nie dotyka alfy przy zwykłym rysowaniu tekstu
+    gdi32.SetTextColor(hdc, 0x00FFFFFF)  # biały (0x00BBGGRR)
+    font = gdi32.CreateFontW(-11, 0, 0, 0, 700, 0, 0, 0, 0, 0, 0, 0, 0, "Segoe UI")
+    old_font = gdi32.SelectObject(hdc, font)
+    rect = wintypes.RECT(0, 0, size, size)
+    user32.DrawTextW(hdc, text, -1, ctypes.byref(rect), DT_CENTER | DT_VCENTER | DT_SINGLELINE)
+    gdi32.SelectObject(hdc, old_font)
+    gdi32.DeleteObject(font)
+    gdi32.SelectObject(hdc, old_bm)
+
+    mask_bmi = BITMAPINFO()
+    mask_bmi.bmiHeader.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+    mask_bmi.bmiHeader.biWidth = size
+    mask_bmi.bmiHeader.biHeight = -size
+    mask_bmi.bmiHeader.biPlanes = 1
+    mask_bmi.bmiHeader.biBitCount = 1
+    mask_bmi.bmiHeader.biCompression = 0
+    mask_bits = ctypes.c_void_p()
+    hbm_mask = gdi32.CreateDIBSection(hdc, ctypes.byref(mask_bmi), 0, ctypes.byref(mask_bits), None, 0)
+    mask_row_bytes = ((size + 31) // 32) * 4
+    ctypes.memset(mask_bits, 0, mask_row_bytes * size)  # 0 = nieprzezroczyste w masce AND
+
+    gdi32.DeleteDC(hdc)
+    user32.ReleaseDC(None, hdc_screen)
+
+    ii = ICONINFO(fIcon=True, xHotspot=0, yHotspot=0, hbmMask=hbm_mask, hbmColor=hbm_color)
+    hicon = user32.CreateIconIndirect(ctypes.byref(ii))
+    gdi32.DeleteObject(hbm_color)
+    gdi32.DeleteObject(hbm_mask)
+    return hicon
 
 
 def read_status():
+    """Zwraca (kind, text, minuty_pozostałe_lub_None — None gdy nie ma sensu
+    rysować licznika, np. brak połączenia albo usługa nieaktywna)."""
     username = os.environ.get("USERNAME", "")
     try:
         data = json.loads(STATUS_PATH.read_text())
         if time.time() - data.get("updated_at", 0) > STALE_AFTER_SECONDS:
-            return "off", "screentime-ad: usługa nie odpowiada"
+            return "off", "screentime-ad: usługa nie odpowiada", None
         me = data.get("sessions", {}).get(username)
         if not me:
-            return "off", "screentime-ad: to konto nie jest śledzone"
+            return "off", "screentime-ad: to konto nie jest śledzone", None
         if not me.get("connected"):
-            return "warn", "screentime-ad: brak połączenia z serwerem"
+            return "warn", "screentime-ad: brak połączenia z serwerem", None
         remaining = me.get("remaining_seconds")
         if remaining is None:
-            return "off", "screentime-ad: brak danych"
+            return "off", "screentime-ad: brak danych", None
         mins = remaining // 60
         if me.get("locked"):
-            return "crit", "screentime-ad: ZABLOKOWANE"
+            return "crit", "screentime-ad: ZABLOKOWANE", 0
         if me.get("warn"):
-            return "warn", f"screentime-ad: kończy się czas ({mins} min)"
-        return "ok", f"screentime-ad: pozostało {mins} min"
+            return "warn", f"screentime-ad: kończy się czas ({mins} min)", mins
+        return "ok", f"screentime-ad: pozostało {mins} min", mins
     except FileNotFoundError:
-        return "off", "screentime-ad: usługa jeszcze nie wystartowała"
+        return "off", "screentime-ad: usługa jeszcze nie wystartowała", None
     except Exception as e:
         _log(f"read_status error: {e}")
-        return "off", "screentime-ad: błąd odczytu statusu"
+        return "off", "screentime-ad: błąd odczytu statusu", None
 
 
 def update_tray() -> None:
-    kind, text = read_status()
-    nid.hIcon = make_icon(kind)
+    kind, text, minutes = read_status()
+    old_icon = nid.hIcon
+    nid.hIcon = make_icon(kind, minutes)
     nid.szTip = text[:127]
     shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid))
+    if old_icon:
+        user32.DestroyIcon(old_icon)
 
 
 def wndproc(hwnd, msg, wparam, lparam):
