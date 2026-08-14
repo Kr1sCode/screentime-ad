@@ -42,7 +42,7 @@
     mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black, transparent 75%);
   }
   .page {
-    max-width: 920px; margin: 0 auto; height: 100%;
+    max-width: 90vw; margin: 0 auto; height: 100%;
     padding: 2.4rem 1.5rem 1.4rem;
     display: flex; flex-direction: column; gap: 1.2rem;
     position: relative;
@@ -91,6 +91,9 @@
   .weekbar .fill { width: 100%; background: linear-gradient(180deg, var(--accent), var(--accent-dim)); box-shadow: 0 0 10px rgba(34,211,238,.5); transition: height .4s; }
   .weekbar.today .track { border-color: var(--accent); }
   .weekbar input { width: 100%; background: #0a1219; border: 1px solid var(--panel-border); color: var(--text); font-family: var(--mono); font-size: .75rem; text-align: center; border-radius: 3px; padding: .25rem 0; }
+  .wc-val { font-family: var(--mono); font-size: .7rem; color: var(--text-dim); }
+  .weekbar.today .wc-val { color: var(--accent); }
+  .weekbar label { text-align: center; line-height: 1.4; }
 
   table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: .8rem; }
   th { text-align: left; padding: .4rem .3rem; color: var(--text-dim); text-transform: uppercase; font-size: .65rem; letter-spacing: .1em; border-bottom: 1px solid var(--panel-border); }
@@ -217,11 +220,8 @@
   </div>
 
   <div class="panel">
-    <h2>Historia (7 dni)</h2>
-    <table>
-      <thead><tr><th>Data</th><th>Zużyte (min)</th></tr></thead>
-      <tbody id="historyBody"></tbody>
-    </table>
+    <h2>Wykres tygodniowy — czas spędzony przed komputerem</h2>
+    <div class="weekbar-row" id="weekChart"></div>
   </div>
 
   <div class="panel">
@@ -335,11 +335,13 @@ function renderLive(s) {
   lockBtn.classList.toggle('danger', !s.manual_locked);
   lockBtn.classList.toggle('ghost', s.manual_locked);
 
+  // Słupki w panelu limitów pokazują wysokość limitu wzgl. najwyższego dnia
+  // tygodnia (samo info o konfiguracji) — realne zużycie ma osobny wykres
+  // niżej (renderWeekChart), bo te dwie rzeczy to różne dane, nie to samo.
   const todayKey = WEEKDAYS[(new Date().getDay() + 6) % 7][0];
+  const maxLimit = Math.max(1, ...WEEKDAYS.map(([k]) => s.weekday_limits[k]));
   WEEKDAYS.forEach(([key]) => {
-    const limitMin = s.weekday_limits[key];
-    const usedMin = key === todayKey ? fmtMin(s.used_seconds) : 0;
-    const h = limitMin > 0 ? Math.min(100, 100 * usedMin / limitMin) : 0;
+    const h = Math.min(100, 100 * s.weekday_limits[key] / maxLimit);
     document.getElementById(`fill-${key}`).style.height = h + '%';
     const wb = document.querySelector(`.weekbar[data-key="${key}"]`);
     wb.classList.toggle('today', key === todayKey);
@@ -349,9 +351,34 @@ function renderLive(s) {
     `<tr><td>${m.hostname}</td><td>${m.os||''}</td><td>${new Date(m.last_seen).toLocaleString('pl-PL')}</td></tr>`
   ).join('') || '<tr><td colspan="3" class="sub">brak danych</td></tr>';
 
-  document.getElementById('historyBody').innerHTML = s.history.map(h =>
-    `<tr><td>${h.date}</td><td>${Math.floor(h.seconds_used/60)}</td></tr>`
-  ).join('') || '<tr><td colspan="2" class="sub">brak danych</td></tr>';
+  renderWeekChart(s);
+}
+
+// Prawdziwy wykres ostatnich 7 dni (nie 7 slotów dnia-tygodnia jak wyżej) —
+// łączy s.history (zużycie per data) z limitem właściwym dla dnia tygodnia
+// tamtej konkretnej daty.
+function renderWeekChart(s) {
+  const usedByDate = {};
+  s.history.forEach(h => { usedByDate[h.date] = h.seconds_used; });
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const iso = d.toISOString().slice(0, 10);
+    const wkLabel = WEEKDAYS[(d.getDay() + 6) % 7][1];
+    days.push({
+      iso, wkLabel,
+      usedMin: fmtMin(usedByDate[iso] || 0),
+      isToday: i === 0,
+    });
+  }
+  const maxMin = Math.max(1, ...days.map(d => d.usedMin), 30);
+  document.getElementById('weekChart').innerHTML = days.map(d => `
+    <div class="weekbar ${d.isToday ? 'today' : ''}">
+      <div class="wc-val">${d.usedMin}</div>
+      <div class="track"><div class="fill" style="height:${Math.min(100, 100 * d.usedMin / maxMin)}%"></div></div>
+      <label>${d.wkLabel}<br>${d.iso.slice(5)}</label>
+    </div>`).join('');
 }
 
 // Pola edytowalne — ustawiane tylko przy starcie strony i zaraz po zapisie,
