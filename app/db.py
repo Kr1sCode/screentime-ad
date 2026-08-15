@@ -22,6 +22,12 @@ CREATE TABLE IF NOT EXISTS daily_bonus (
     date TEXT PRIMARY KEY,
     minutes INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS window_usage (
+    date TEXT NOT NULL,
+    window_index INTEGER NOT NULL,
+    seconds_used INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (date, window_index)
+);
 CREATE TABLE IF NOT EXISTS machines (
     hostname TEXT PRIMARY KEY,
     os TEXT,
@@ -88,6 +94,7 @@ def init_db() -> None:
         "ldap_bind_dn": "",
         "ldap_bind_password": "",
         "manual_lock_date": "",
+        "dosing_segments": "0",
     }
     for k, v in defaults.items():
         conn.execute("INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", (k, v))

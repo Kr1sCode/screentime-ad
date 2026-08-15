@@ -159,6 +159,7 @@
             <div class="hero-row"><span>zużyte / limit</span><span id="usedStat">-- / --</span></div>
             <div class="hero-row"><span>bonus dzisiaj</span><span id="bonusStat">--</span></div>
             <div class="hero-row"><span>maszyn aktywnych</span><span id="machineCount">--</span></div>
+            <div class="hero-row" id="windowRow" style="display:none"><span>okno dawkowania</span><span id="windowStat">--</span></div>
             <div class="row" style="margin-top:.6rem">
               <button onclick="addBonus(15)">+15 min</button>
               <button class="ghost" onclick="addBonus(-10)">-10 min</button>
@@ -196,11 +197,25 @@
   </div>
 
   <div class="panel">
-    <h2>Godziny blokady (twardy zakaz, niezależnie od puli)</h2>
-    <div class="ranges" id="rangesList"></div>
-    <div class="row" style="margin-top:.8rem">
-      <button class="ghost" onclick="addRangeRow()">+ dodaj zakres</button>
-      <button onclick="saveRanges()">zapisz</button>
+    <h2>Godziny blokady i dawkowanie czasu</h2>
+    <div class="status-split">
+      <div class="status-half">
+        <p class="sub" style="margin-bottom:.6rem">twardy zakaz, niezależnie od puli</p>
+        <div class="ranges" id="rangesList"></div>
+        <div class="row" style="margin-top:.8rem">
+          <button class="ghost" onclick="addRangeRow()">+ dodaj zakres</button>
+          <button onclick="saveRanges()">zapisz</button>
+        </div>
+      </div>
+      <div class="status-half">
+        <p class="sub" style="margin-bottom:.6rem">dzieli dzienny limit na równe porcje rozłożone w dostępnych (niezablokowanych) godzinach — jak limity sesji: dziecko nie wykorzysta całej puli od razu</p>
+        <div class="row">
+          <label class="sub">liczba progów (0 = wyłączone)</label>
+          <input id="dosingSegmentsInput" type="number" min="0" max="12" style="width:70px">
+          <button onclick="saveDosing()">zapisz</button>
+        </div>
+        <div id="dosingPreview" class="sub" style="margin-top:.8rem; display:flex; flex-direction:column; gap:.3rem"></div>
+      </div>
     </div>
   </div>
 
@@ -385,6 +400,17 @@ function renderLive(s) {
   document.getElementById('machineCount').textContent = s.machines.length;
   document.getElementById('agentToken').textContent = s.agent_token;
 
+  const windowRow = document.getElementById('windowRow');
+  if (s.dosing_segments && s.current_window_index !== null && s.dosing_windows[s.current_window_index]) {
+    const w = s.dosing_windows[s.current_window_index];
+    windowRow.style.display = '';
+    document.getElementById('windowStat').textContent =
+      `${s.current_window_index + 1}/${s.dosing_segments} (${w.ranges.join(', ')}) · zostało ${fmtMin(s.window_remaining_seconds)} min`;
+  } else {
+    windowRow.style.display = 'none';
+  }
+  renderDosingPreview(s);
+
   lastManualLocked = s.manual_locked;
   const lockBtn = document.getElementById('lockToggleBtn');
   lockBtn.textContent = s.manual_locked ? 'odblokuj teraz' : 'zablokuj teraz';
@@ -459,6 +485,7 @@ function renderConfigForms(s) {
   document.getElementById('targetUsername').value = s.target_username || '';
   document.getElementById('idleMinutesInput').value = s.idle_timeout_minutes || 0;
   document.getElementById('idleAction').value = s.idle_action || 'none';
+  document.getElementById('dosingSegmentsInput').value = s.dosing_segments || 0;
   buildWeekCombined(s);
   const rangesList = document.getElementById('rangesList');
   rangesList.innerHTML = '';
@@ -493,6 +520,19 @@ async function saveWeekLimits() {
   const limits = {};
   WEEKDAYS.forEach(([key]) => { limits[key] = parseInt(document.getElementById(`input-${key}`).value || '0', 10); });
   await api('/api/config', { method: 'POST', body: JSON.stringify({ weekday_limits: limits }) });
+  refresh();
+}
+function renderDosingPreview(s) {
+  const el = document.getElementById('dosingPreview');
+  if (!s.dosing_segments) { el.textContent = 'dawkowanie wyłączone — cały dzienny limit dostępny od razu'; return; }
+  el.innerHTML = s.dosing_windows.map((w, i) => {
+    const isNow = i === s.current_window_index;
+    return `<div${isNow ? ' style="color:var(--accent)"' : ''}>okno ${i + 1}/${s.dosing_segments}: ${w.ranges.join(', ')} — ${w.budget_minutes} min</div>`;
+  }).join('');
+}
+async function saveDosing() {
+  const segments = parseInt(document.getElementById('dosingSegmentsInput').value || '0', 10);
+  await api('/api/config', { method: 'POST', body: JSON.stringify({ dosing_segments: segments }) });
   refresh();
 }
 async function saveRanges() {

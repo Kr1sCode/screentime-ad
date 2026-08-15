@@ -24,14 +24,40 @@ AGENT_SUBDIR = "agent_linux"
 INSTALL_DIR = Path(__file__).resolve().parent
 SHA_FILE = INSTALL_DIR / ".installed_sha"
 CONFIG_PATH = Path("/etc/screentime-ad/agent.conf")
+CACHE_PATH = Path("/var/lib/screentime-ad-agent/offline_cache.json")
 
 POLL_INTERVAL = 15
 HEARTBEAT_INTERVAL = 60
 UPDATE_CHECK_INTERVAL = 3600
 WARN_THRESHOLD_SECONDS = 300
 WARN_TEXT = "Za niecałe 5 minut skończy Ci się czas.\nProszę zapisz pracę i zrób sobie przerwę!"
+WINDOW_WARN_5MIN_TMPL = "Za 5 minut zamyka się okno czasu.\nTo nie koniec na dziś — wznowienie o {reset_at}."
+WINDOW_WARN_1MIN_TMPL = "Za 1 minutę zamyka się okno czasu.\nWznowienie o {reset_at}."
 
 HOSTNAME = subprocess.run(["hostname"], capture_output=True, text=True).stdout.strip()
+
+
+# ---------- trwały cache offline (przeżywa restart komputera) ----------
+#
+# Bez tego, po restarcie z niedostępnym serwerem, last_remaining_cache byłby
+# pusty (tylko w pamięci procesu) -> agent zakładałby "brak danych = brak
+# ograniczeń" (fail-open — dziura, wystarczy wyłączyć sieć po restarcie).
+# Zamiast tego cache jest kluczowany po username (przeżywa restart, w
+# przeciwieństwie do session_id) i trzymany na dysku; gdy brak w nim danych
+# NA DZISIAJ, agent zakłada 0 pozostałych sekund (fail-closed).
+def load_offline_cache() -> dict:
+    try:
+        return json.loads(CACHE_PATH.read_text())
+    except Exception:
+        return {}
+
+
+def save_offline_cache(cache: dict) -> None:
+    try:
+        CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        CACHE_PATH.write_text(json.dumps(cache))
+    except Exception:
+        pass
 
 
 # ---------- auto-update ----------
@@ -125,7 +151,7 @@ def _session_env(leader_pid: str) -> dict:
     return envs
 
 
-def show_banner(session) -> None:
+def show_banner(session, text: str = WARN_TEXT) -> None:
     envs = _session_env(session["leader_pid"])
     env = os.environ.copy()
     env["DISPLAY"] = envs.get("DISPLAY", ":0")
@@ -137,7 +163,7 @@ def show_banner(session) -> None:
         subprocess.Popen(
             ["runuser", "-u", session["username"], "--",
              "zenity", "--warning", "--title=screentime-ad",
-             f"--text={WARN_TEXT}", "--timeout=10", "--width=420"],
+             f"--text={text}", "--timeout=10", "--width=420"],
             env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
     except Exception as e:
@@ -165,9 +191,10 @@ def heartbeat(cfg: dict, username: str, delta: int) -> dict:
 def main() -> None:
     cfg = load_config()
     warned = {}
+    window_warned_5 = {}
+    window_warned_1 = {}
     accumulated = {}
-    last_remaining_cache = {}
-    idle_settings = {}
+    offline_cache = load_offline_cache()  # {username: {date, remaining_seconds, idle_timeout_minutes, idle_action}}
     idle_triggered = {}
     last_heartbeat = 0.0
     last_update_check = time.time()
@@ -179,12 +206,16 @@ def main() -> None:
                 print("nowa wersja pobrana, restartuję...")
                 os.execv(sys.executable, [sys.executable] + sys.argv)
 
+        today = time.strftime("%Y-%m-%d")
         sessions = list_active_sessions()
         for s in sessions:
             sid = s["session_id"]
             accumulated[sid] = accumulated.get(sid, 0) + POLL_INTERVAL
 
-            timeout_min, action = idle_settings.get(sid, (0, "none"))
+            cached = offline_cache.get(s["username"])
+            timeout_min, action = (0, "none")
+            if cached and cached.get("date") == today:
+                timeout_min, action = cached.get("idle_timeout_minutes", 0), cached.get("idle_action", "none")
             if timeout_min and action != "none":
                 idle_sec = session_idle_seconds(sid)
                 if idle_sec is None:
@@ -206,17 +237,36 @@ def main() -> None:
                 delta = accumulated.pop(sid, 0)
                 try:
                     resp = heartbeat(cfg, s["username"], delta)
-                    last_remaining_cache[sid] = resp["remaining_seconds"]
-                    idle_settings[sid] = (resp.get("idle_timeout_minutes", 0), resp.get("idle_action", "none"))
+                    offline_cache[s["username"]] = {
+                        "date": today,
+                        "remaining_seconds": resp["remaining_seconds"],
+                        "idle_timeout_minutes": resp.get("idle_timeout_minutes", 0),
+                        "idle_action": resp.get("idle_action", "none"),
+                    }
+                    save_offline_cache(offline_cache)
                 except (urllib.error.URLError, OSError):
-                    prev = last_remaining_cache.get(sid)
-                    remaining = max(0, prev - delta) if prev is not None else None
-                    last_remaining_cache[sid] = remaining
+                    cached = offline_cache.get(s["username"])
+                    if cached and cached.get("date") == today:
+                        prev = cached.get("remaining_seconds", 0)
+                        idle_timeout_minutes = cached.get("idle_timeout_minutes", 0)
+                        idle_action = cached.get("idle_action", "none")
+                    else:
+                        # brak świeżych (dzisiejszych) danych — fail-closed,
+                        # nie ufamy staremu/nieznanemu stanowi
+                        prev, idle_timeout_minutes, idle_action = 0, 0, "none"
+                    remaining = max(0, prev - delta)
                     resp = {
                         "remaining_seconds": remaining,
-                        "warn_5min": remaining is not None and remaining <= WARN_THRESHOLD_SECONDS,
-                        "force_logout": remaining is not None and remaining <= 0,
+                        "warn_5min": remaining <= WARN_THRESHOLD_SECONDS,
+                        "force_logout": remaining <= 0,
+                        "idle_timeout_minutes": idle_timeout_minutes,
+                        "idle_action": idle_action,
                     }
+                    offline_cache[s["username"]] = {
+                        "date": today, "remaining_seconds": remaining,
+                        "idle_timeout_minutes": idle_timeout_minutes, "idle_action": idle_action,
+                    }
+                    save_offline_cache(offline_cache)
 
                 remaining = resp.get("remaining_seconds")
                 if remaining is not None and remaining > WARN_THRESHOLD_SECONDS:
@@ -224,6 +274,18 @@ def main() -> None:
                 if resp.get("warn_5min") and not warned.get(sid):
                     show_banner(s)
                     warned[sid] = True
+
+                reset_at = resp.get("window_reset_at")
+                if resp.get("window_warn_5min") and not window_warned_5.get(sid):
+                    show_banner(s, WINDOW_WARN_5MIN_TMPL.format(reset_at=reset_at))
+                    window_warned_5[sid] = True
+                if resp.get("window_warn_1min") and not window_warned_1.get(sid):
+                    show_banner(s, WINDOW_WARN_1MIN_TMPL.format(reset_at=reset_at))
+                    window_warned_1[sid] = True
+                if not resp.get("window_warn_5min") and not resp.get("window_warn_1min"):
+                    window_warned_5[sid] = False
+                    window_warned_1[sid] = False
+
                 if resp.get("force_logout"):
                     terminate_session(sid)
 

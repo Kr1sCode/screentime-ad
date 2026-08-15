@@ -30,6 +30,7 @@ VERSION_FILE = INSTALL_DIR / "version.txt"
 DATA_DIR = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "screentime-ad"
 CONFIG_PATH = DATA_DIR / "agent.json"
 STATUS_PATH = DATA_DIR / "status.json"
+CACHE_PATH = DATA_DIR / "offline_cache.json"
 
 POLL_INTERVAL = 15
 HEARTBEAT_INTERVAL = 60
@@ -37,6 +38,8 @@ UPDATE_CHECK_INTERVAL = 3600
 WARN_THRESHOLD_SECONDS = 300
 WARN_TITLE = "screentime-ad"
 WARN_TEXT = "Za niecałe 5 minut skończy Ci się czas.\nProszę zapisz pracę i zrób sobie przerwę!"
+WINDOW_WARN_5MIN_TMPL = "Za 5 minut zamyka się okno czasu.\nTo nie koniec na dziś — wznowienie o {reset_at}."
+WINDOW_WARN_1MIN_TMPL = "Za 1 minutę zamyka się okno czasu.\nWznowienie o {reset_at}."
 
 HOSTNAME = os.environ.get("COMPUTERNAME", "unknown")
 
@@ -98,12 +101,12 @@ def list_active_sessions():
     return result
 
 
-def show_banner(session_id: int) -> None:
+def show_banner(session_id: int, text: str = WARN_TEXT) -> None:
     resp = wintypes.DWORD()
     wtsapi32.WTSSendMessageW(
         WTS_CURRENT_SERVER_HANDLE, session_id,
         WARN_TITLE, len(WARN_TITLE) * 2,
-        WARN_TEXT, len(WARN_TEXT) * 2,
+        text, len(text) * 2,
         0, 10, ctypes.byref(resp), False,
     )
 
@@ -196,6 +199,30 @@ def load_config() -> dict:
     return json.loads(CONFIG_PATH.read_text())
 
 
+# ---------- trwały cache offline (przeżywa restart komputera) ----------
+#
+# Bez tego, po restarcie z niedostępnym serwerem, cache pozostałego czasu
+# byłby pusty (tylko w pamięci procesu) -> agent zakładałby "brak danych =
+# brak ograniczeń" (fail-open — dziura, wystarczy odłączyć sieć po
+# restarcie). Zamiast tego cache jest kluczowany po username (przeżywa
+# restart, w przeciwieństwie do session_id) i trzymany na dysku (ProgramData
+# — przeżywa reboot); gdy brak w nim danych NA DZISIAJ, agent zakłada 0
+# pozostałych sekund (fail-closed).
+def load_offline_cache() -> dict:
+    try:
+        return json.loads(CACHE_PATH.read_text())
+    except Exception:
+        return {}
+
+
+def save_offline_cache(cache: dict) -> None:
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        CACHE_PATH.write_text(json.dumps(cache))
+    except Exception:
+        pass
+
+
 def heartbeat(cfg: dict, username: str, delta: int) -> dict:
     body = json.dumps({
         "hostname": HOSTNAME, "os": "windows", "username": username, "active_seconds_delta": delta,
@@ -211,9 +238,10 @@ def heartbeat(cfg: dict, username: str, delta: int) -> dict:
 def main() -> None:
     cfg = load_config()
     warned = {}
+    window_warned_5 = {}
+    window_warned_1 = {}
     accumulated = {}
-    last_remaining_cache = {}
-    last_idle_cache = {}
+    offline_cache = load_offline_cache()  # {username: {date, remaining_seconds, idle_timeout_minutes, idle_action}}
     last_heartbeat = 0.0
     last_update_check = time.time()
 
@@ -228,6 +256,7 @@ def main() -> None:
 
         if time.time() - last_heartbeat >= HEARTBEAT_INTERVAL:
             last_heartbeat = time.time()
+            today = time.strftime("%Y-%m-%d")
             status_by_user = {}
             for s in sessions:
                 sid = s["session_id"]
@@ -235,21 +264,37 @@ def main() -> None:
                 connected = True
                 try:
                     resp = heartbeat(cfg, s["username"], delta)
-                    last_remaining_cache[sid] = resp["remaining_seconds"]
-                    last_idle_cache[sid] = (resp.get("idle_timeout_minutes", 0), resp.get("idle_action", "none"))
+                    offline_cache[s["username"]] = {
+                        "date": today,
+                        "remaining_seconds": resp["remaining_seconds"],
+                        "idle_timeout_minutes": resp.get("idle_timeout_minutes", 0),
+                        "idle_action": resp.get("idle_action", "none"),
+                    }
+                    save_offline_cache(offline_cache)
                 except (urllib.error.URLError, OSError):
                     connected = False
-                    prev = last_remaining_cache.get(sid)
-                    remaining = max(0, prev - delta) if prev is not None else None
-                    last_remaining_cache[sid] = remaining
-                    idle_timeout_minutes, idle_action = last_idle_cache.get(sid, (0, "none"))
+                    cached = offline_cache.get(s["username"])
+                    if cached and cached.get("date") == today:
+                        prev = cached.get("remaining_seconds", 0)
+                        idle_timeout_minutes = cached.get("idle_timeout_minutes", 0)
+                        idle_action = cached.get("idle_action", "none")
+                    else:
+                        # brak świeżych (dzisiejszych) danych — fail-closed,
+                        # nie ufamy staremu/nieznanemu stanowi
+                        prev, idle_timeout_minutes, idle_action = 0, 0, "none"
+                    remaining = max(0, prev - delta)
                     resp = {
                         "remaining_seconds": remaining,
-                        "warn_5min": remaining is not None and remaining <= WARN_THRESHOLD_SECONDS,
-                        "force_logout": remaining is not None and remaining <= 0,
+                        "warn_5min": remaining <= WARN_THRESHOLD_SECONDS,
+                        "force_logout": remaining <= 0,
                         "idle_timeout_minutes": idle_timeout_minutes,
                         "idle_action": idle_action,
                     }
+                    offline_cache[s["username"]] = {
+                        "date": today, "remaining_seconds": remaining,
+                        "idle_timeout_minutes": idle_timeout_minutes, "idle_action": idle_action,
+                    }
+                    save_offline_cache(offline_cache)
 
                 remaining = resp.get("remaining_seconds")
                 if remaining is not None and remaining > WARN_THRESHOLD_SECONDS:
@@ -257,6 +302,18 @@ def main() -> None:
                 if resp.get("warn_5min") and not warned.get(sid):
                     show_banner(sid)
                     warned[sid] = True
+
+                reset_at = resp.get("window_reset_at")
+                if resp.get("window_warn_5min") and not window_warned_5.get(sid):
+                    show_banner(sid, WINDOW_WARN_5MIN_TMPL.format(reset_at=reset_at))
+                    window_warned_5[sid] = True
+                if resp.get("window_warn_1min") and not window_warned_1.get(sid):
+                    show_banner(sid, WINDOW_WARN_1MIN_TMPL.format(reset_at=reset_at))
+                    window_warned_1[sid] = True
+                if not resp.get("window_warn_5min") and not resp.get("window_warn_1min"):
+                    window_warned_5[sid] = False
+                    window_warned_1[sid] = False
+
                 if resp.get("force_logout"):
                     logoff_session(sid)
 

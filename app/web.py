@@ -157,6 +157,10 @@ def state():
         manual_locked=core.is_manually_locked(conn, date),
         idle_timeout_minutes=core.get_idle_timeout_minutes(conn),
         idle_action=core.get_idle_action(conn),
+        dosing_segments=core.get_dosing_segments(conn),
+        dosing_windows=core.dosing_windows_preview(conn, date),
+        current_window_index=core.current_window_index(conn),
+        window_remaining_seconds=core.remaining_breakdown(conn, date)["window_remaining"],
         ad_lock_enabled=core.get_config(conn, "ad_lock_enabled", "0") == "1",
         ldap_configured=_ldap_cfg(conn) is not None,
         ldap_host=core.get_config(conn, "ldap_host", ""),
@@ -218,6 +222,8 @@ def set_config():
             data.get("idle_timeout_minutes", core.get_idle_timeout_minutes(conn)),
             data.get("idle_action", core.get_idle_action(conn)),
         )
+    if "dosing_segments" in data:
+        core.set_dosing_segments(conn, data["dosing_segments"])
     conn.close()
     return jsonify(ok=True)
 
@@ -275,20 +281,37 @@ def heartbeat():
 
     is_target = bool(target) and username.lower() == target.lower()
     blocked = core.is_blocked_now(conn) if is_target else False
+    date = core.today_str()
     if is_target and not blocked:
-        core.add_used_seconds(conn, core.today_str(), delta)
+        core.add_used_seconds(conn, date, delta)
+        core.add_window_used_seconds(conn, date, core.current_window_index(conn), delta)
 
     core.touch_machine(conn, hostname, os_name, delta if is_target else 0)
 
-    remaining = core.remaining_seconds(conn) if is_target else 999_999
-    warn = is_target and (remaining <= 300 or core.blocked_range_starts_soon(conn))
+    breakdown = core.remaining_breakdown(conn, date) if is_target else None
+    remaining = breakdown["remaining"] if is_target else 999_999
     force = is_target and (blocked or remaining <= 0)
+
+    # Gdy limit tnie dawkowanie (nie brak puli na dziś), agent pokazuje
+    # inny komunikat — "okno się zamyka, wznowienie o HH:MM" zamiast
+    # zwykłego "koniec czasu na dziś" — w dwóch etapach (5 i 1 min).
+    window_reset_soon = bool(is_target and breakdown["window_limited"] and breakdown["window_reset_minutes"] is not None)
+    window_warn_1min = window_reset_soon and remaining <= 60
+    window_warn_5min = window_reset_soon and 60 < remaining <= 300
+    window_reset_at = None
+    if window_reset_soon:
+        m = breakdown["window_reset_minutes"]
+        window_reset_at = f"{m // 60:02d}:{m % 60:02d}"
+
+    warn = is_target and not window_reset_soon and (remaining <= 300 or core.blocked_range_starts_soon(conn))
     idle_timeout_minutes = core.get_idle_timeout_minutes(conn) if is_target else 0
     idle_action = core.get_idle_action(conn) if is_target else "none"
     conn.close()
     return jsonify(
         remaining_seconds=remaining, warn_5min=warn, force_logout=force,
         idle_timeout_minutes=idle_timeout_minutes, idle_action=idle_action,
+        window_warn_5min=window_warn_5min, window_warn_1min=window_warn_1min,
+        window_reset_at=window_reset_at,
     )
 
 
