@@ -17,7 +17,6 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -31,6 +30,7 @@ DATA_DIR = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "screentime-
 CONFIG_PATH = DATA_DIR / "agent.json"
 STATUS_PATH = DATA_DIR / "status.json"
 CACHE_PATH = DATA_DIR / "offline_cache.json"
+UPDATE_TMP_DIR = DATA_DIR / "pending_update"
 
 POLL_INTERVAL = 15
 HEARTBEAT_INTERVAL = 60
@@ -154,8 +154,12 @@ def check_and_update() -> None:
             line.split()[0] for line in sums_text.splitlines() if line.strip().endswith(installer_name)
         )
 
-        tmp_dir = Path(tempfile.mkdtemp())
-        installer_path = tmp_dir / installer_name
+        # Stały katalog (nie losowy tempdir) — dzięki temu wystarczy JEDNO
+        # wykluczenie w Defenderze na ten folder, zamiast ręcznego klikania
+        # "uruchom mimo to" przy każdej aktualizacji (SmartScreen/Defender
+        # fałszywie łapie niepodpisane instalatory Inno Setup jako trojan).
+        UPDATE_TMP_DIR.mkdir(parents=True, exist_ok=True)
+        installer_path = UPDATE_TMP_DIR / installer_name
         with urllib.request.urlopen(assets[installer_name], timeout=60) as r:
             data = r.read()
         actual = hashlib.sha256(data).hexdigest()
