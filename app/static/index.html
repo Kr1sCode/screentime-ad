@@ -23,7 +23,8 @@
   html, body { height: 100%; overflow: hidden; }
   body {
     margin: 0;
-    font-family: system-ui, sans-serif;
+    font-family: "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
+    font-size: 16px;
     color: var(--text);
     background:
       radial-gradient(ellipse 900px 500px at 15% -10%, rgba(34,211,238,0.10), transparent 60%),
@@ -55,8 +56,8 @@
   .wrap { display: flex; flex-direction: column; gap: clamp(.4rem, 1.5vh, 1.4rem); position: relative; padding-bottom: .3rem; }
 
   header { flex-shrink: 0; display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--panel-border); padding-bottom: clamp(.3rem, 1vh, .8rem); }
-  h1 { font-size: 1rem; margin: 0; letter-spacing: .3em; text-transform: uppercase; color: var(--accent); text-shadow: 0 0 12px rgba(34,211,238,.6); }
-  .sub { font-family: var(--mono); font-size: .7rem; color: var(--text-dim); letter-spacing: .1em; }
+  h1 { font-size: 1.1rem; margin: 0; letter-spacing: .3em; text-transform: uppercase; color: var(--accent); text-shadow: 0 0 12px rgba(34,211,238,.6); }
+  .sub { font-family: var(--mono); font-size: .8rem; color: var(--text-dim); letter-spacing: .1em; }
 
   .panel {
     position: relative;
@@ -72,18 +73,21 @@
   .corners .bl { bottom: -1px; left: -1px; border-bottom: 2px solid var(--accent); border-left: 2px solid var(--accent); }
   .corners .br { bottom: -1px; right: -1px; border-bottom: 2px solid var(--accent); border-right: 2px solid var(--accent); }
 
-  h2 { margin: 0 0 clamp(.4rem, 1.2vh, 1rem); font-size: .75rem; letter-spacing: .2em; text-transform: uppercase; color: var(--text-dim); font-weight: 600; }
+  h2 { margin: 0 0 clamp(.4rem, 1.2vh, 1rem); font-size: .85rem; letter-spacing: .2em; text-transform: uppercase; color: var(--text-dim); font-weight: 600; }
 
+  .status-split { display: flex; gap: clamp(1rem, 3vw, 2rem); flex-wrap: wrap; align-items: flex-start; }
+  .status-half { flex: 1; min-width: 260px; }
   .hero { display: flex; align-items: center; gap: clamp(1rem, 3vw, 2rem); flex-wrap: wrap; }
-  .gauge-box { flex-shrink: 0; }
-  #gaugeSvg { width: clamp(110px, 18vh, 200px); height: clamp(110px, 18vh, 200px); }
-  .gauge-readout { position: relative; }
-  .gauge-num { font-family: var(--mono); font-size: 2.1rem; font-weight: 700; text-align: center; }
-  .gauge-label { font-family: var(--mono); font-size: .65rem; text-align: center; color: var(--text-dim); letter-spacing: .15em; margin-top: .2rem; }
-  .hero-side { display: flex; flex-direction: column; gap: .5rem; font-family: var(--mono); font-size: .85rem; flex: 1; min-width: 220px; }
+  .gauge-box { flex-shrink: 0; position: relative; }
+  .gauge-svg { width: clamp(90px, 15vh, 170px); height: clamp(90px, 15vh, 170px); display: block; }
+  .gauge-readout { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -40%); }
+  .gauge-num { font-family: var(--mono); font-size: 1.9rem; font-weight: 700; text-align: center; }
+  .gauge-label { font-family: var(--mono); font-size: .72rem; text-align: center; color: var(--text-dim); letter-spacing: .15em; margin-top: .2rem; }
+  .hero-side { display: flex; flex-direction: column; gap: .5rem; font-family: var(--mono); font-size: .95rem; flex: 1; min-width: 220px; }
+  .idle-side { display: flex; flex-direction: column; gap: .6rem; margin-top: .8rem; }
   .hero-row { display: flex; justify-content: space-between; border-bottom: 1px dashed var(--panel-border); padding-bottom: .35rem; }
-  .hero-row span:first-child { color: var(--text-dim); text-transform: uppercase; letter-spacing: .1em; font-size: .7rem; }
-  .status-pill { display: inline-flex; align-items: center; gap: .4rem; font-family: var(--mono); font-size: .7rem; letter-spacing: .1em; padding: .25rem .6rem; border-radius: 3px; text-transform: uppercase; }
+  .hero-row span:first-child { color: var(--text-dim); text-transform: uppercase; letter-spacing: .1em; font-size: .78rem; }
+  .status-pill { display: inline-flex; align-items: center; gap: .4rem; font-family: var(--mono); font-size: .78rem; letter-spacing: .1em; padding: .25rem .6rem; border-radius: 3px; text-transform: uppercase; }
   .status-pill.ok { color: var(--good); background: rgba(52,224,161,.1); border: 1px solid rgba(52,224,161,.35); }
   .status-pill.warn { color: var(--warn); background: rgba(250,178,25,.1); border: 1px solid rgba(250,178,25,.35); }
   .status-pill.crit { color: var(--crit); background: rgba(255,77,94,.12); border: 1px solid rgba(255,77,94,.4); animation: pulse 1.4s infinite; }
@@ -91,33 +95,33 @@
 
   .weekbar-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: .6rem; margin-top: .4rem; }
   .weekbar { display: flex; flex-direction: column; align-items: center; gap: .4rem; }
-  .weekbar label { font-family: var(--mono); font-size: .65rem; color: var(--text-dim); letter-spacing: .1em; text-transform: uppercase; }
+  .weekbar label { font-family: var(--mono); font-size: .72rem; color: var(--text-dim); letter-spacing: .1em; text-transform: uppercase; }
   .weekbar .track { position: relative; width: 100%; height: clamp(40px, 9vh, 70px); background: rgba(255,255,255,.04); border: 1px solid var(--panel-border); border-radius: 2px; display: flex; align-items: flex-end; overflow: hidden; }
   .weekbar .fill { width: 100%; background: linear-gradient(180deg, var(--accent), var(--accent-dim)); box-shadow: 0 0 10px rgba(34,211,238,.5); transition: height .4s; }
   .weekbar .fill.over { background: linear-gradient(180deg, var(--crit), #7a1620); box-shadow: 0 0 10px rgba(255,77,94,.5); }
   .weekbar .limit-line { position: absolute; left: 0; right: 0; height: 2px; background: var(--warn); box-shadow: 0 0 6px rgba(250,178,25,.7); z-index: 1; }
   .weekbar.today .track { border-color: var(--accent); }
-  .weekbar input { width: 100%; background: #0a1219; border: 1px solid var(--panel-border); color: var(--text); font-family: var(--mono); font-size: .75rem; text-align: center; border-radius: 3px; padding: .25rem 0; }
-  .wc-val { font-family: var(--mono); font-size: .7rem; color: var(--text-dim); }
+  .weekbar input { width: 100%; background: #0a1219; border: 1px solid var(--panel-border); color: var(--text); font-family: var(--mono); font-size: .85rem; text-align: center; border-radius: 3px; padding: .25rem 0; }
+  .wc-val { font-family: var(--mono); font-size: .78rem; color: var(--text-dim); }
   .weekbar.today .wc-val { color: var(--accent); }
   .weekbar label { text-align: center; line-height: 1.4; }
 
-  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: .8rem; }
-  th { text-align: left; padding: .4rem .3rem; color: var(--text-dim); text-transform: uppercase; font-size: .65rem; letter-spacing: .1em; border-bottom: 1px solid var(--panel-border); }
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: .9rem; }
+  th { text-align: left; padding: .4rem .3rem; color: var(--text-dim); text-transform: uppercase; font-size: .72rem; letter-spacing: .1em; border-bottom: 1px solid var(--panel-border); }
   td { padding: .45rem .3rem; border-bottom: 1px solid rgba(255,255,255,.04); }
 
   .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
-  input, select { padding: .5rem .65rem; border-radius: 3px; border: 1px solid var(--panel-border); background: #0a1219; color: var(--text); font-family: var(--mono); font-size: .8rem; }
-  button { padding: .5rem .9rem; border: 1px solid var(--accent-dim); border-radius: 3px; background: rgba(34,211,238,.08); color: var(--accent); cursor: pointer; font-family: var(--mono); font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; }
+  input, select { padding: .5rem .65rem; border-radius: 3px; border: 1px solid var(--panel-border); background: #0a1219; color: var(--text); font-family: var(--mono); font-size: .9rem; }
+  button { padding: .5rem .9rem; border: 1px solid var(--accent-dim); border-radius: 3px; background: rgba(34,211,238,.08); color: var(--accent); cursor: pointer; font-family: var(--mono); font-size: .85rem; text-transform: uppercase; letter-spacing: .1em; }
   button:hover { background: rgba(34,211,238,.18); box-shadow: 0 0 12px rgba(34,211,238,.25); }
   button.danger { border-color: rgba(255,77,94,.5); color: var(--crit); background: rgba(255,77,94,.08); }
   button.danger:hover { background: rgba(255,77,94,.18); }
   button.ghost { border-color: var(--panel-border); color: var(--text-dim); background: transparent; }
   .ranges { display: flex; flex-direction: column; gap: .5rem; }
   .range-row { display: flex; gap: .5rem; align-items: center; }
-  #msg { min-height: 1.2rem; font-family: var(--mono); font-size: .8rem; color: var(--good); }
+  #msg { min-height: 1.2rem; font-family: var(--mono); font-size: .88rem; color: var(--good); }
 
-  .footer-panel { flex-shrink: 0; text-align: center; padding: .8rem 1rem; font-family: var(--mono); font-size: .7rem; color: var(--text-dim); letter-spacing: .1em; }
+  .footer-panel { flex-shrink: 0; text-align: center; padding: .8rem 1rem; font-family: var(--mono); font-size: .78rem; color: var(--text-dim); letter-spacing: .1em; }
   .view { display: none; flex-direction: column; gap: 1.4rem; }
   .view.active { display: flex; }
 </style>
@@ -140,26 +144,52 @@
 
   <div class="panel">
     <h2>Status dzisiaj</h2>
-    <div class="hero">
-      <div class="gauge-box">
-        <svg id="gaugeSvg" width="200" height="200" viewBox="0 0 200 200"></svg>
-        <div class="gauge-readout">
-          <div class="gauge-num" id="gaugeNum">--</div>
-          <div class="gauge-label">pozostało (min)</div>
+    <div class="status-split">
+      <div class="status-half">
+        <div class="hero">
+          <div class="gauge-box">
+            <svg id="gaugeSvg" class="gauge-svg" viewBox="0 0 200 200"></svg>
+            <div class="gauge-readout">
+              <div class="gauge-num" id="gaugeNum">--</div>
+              <div class="gauge-label">pozostało (min)</div>
+            </div>
+          </div>
+          <div class="hero-side">
+            <div id="statusPillWrap"></div>
+            <div class="hero-row"><span>zużyte / limit</span><span id="usedStat">-- / --</span></div>
+            <div class="hero-row"><span>bonus dzisiaj</span><span id="bonusStat">--</span></div>
+            <div class="hero-row"><span>maszyn aktywnych</span><span id="machineCount">--</span></div>
+            <div class="row" style="margin-top:.6rem">
+              <button onclick="addBonus(15)">+15 min</button>
+              <button class="ghost" onclick="addBonus(-10)">-10 min</button>
+              <button class="ghost" onclick="addBonus(-20)">-20 min</button>
+              <input id="setRemainingInput" type="number" min="0" placeholder="min" style="width:80px">
+              <button onclick="setRemaining()">ustaw</button>
+              <button class="danger" id="lockToggleBtn" onclick="toggleLock()">zablokuj teraz</button>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="hero-side">
-        <div id="statusPillWrap"></div>
-        <div class="hero-row"><span>zużyte / limit</span><span id="usedStat">-- / --</span></div>
-        <div class="hero-row"><span>bonus dzisiaj</span><span id="bonusStat">--</span></div>
-        <div class="hero-row"><span>maszyn aktywnych</span><span id="machineCount">--</span></div>
-        <div class="row" style="margin-top:.6rem">
-          <button onclick="addBonus(15)">+15 min</button>
-          <button class="ghost" onclick="addBonus(-10)">-10 min</button>
-          <button class="ghost" onclick="addBonus(-20)">-20 min</button>
-          <input id="setRemainingInput" type="number" min="0" placeholder="min" style="width:80px">
-          <button onclick="setRemaining()">ustaw</button>
-          <button class="danger" id="lockToggleBtn" onclick="toggleLock()">zablokuj teraz</button>
+      <div class="status-half">
+        <div class="gauge-box">
+          <svg id="idleGaugeSvg" class="gauge-svg" viewBox="0 0 200 200"></svg>
+          <div class="gauge-readout">
+            <div class="gauge-num" id="idleGaugeNum">--</div>
+            <div class="gauge-label">bezczynność (min)</div>
+          </div>
+        </div>
+        <div class="idle-side">
+          <div class="hero-row"><span>po bezczynności</span>
+            <select id="idleAction" onchange="onIdleInputChange()">
+              <option value="none">nic nie rób</option>
+              <option value="sleep">uśpij komputer</option>
+              <option value="shutdown">wyłącz (FORCE)</option>
+            </select>
+          </div>
+          <div class="row">
+            <input id="idleMinutesInput" type="number" min="0" max="240" placeholder="min" style="width:80px" oninput="onIdleInputChange()">
+            <button onclick="saveIdleSettings()">zapisz</button>
+          </div>
         </div>
       </div>
     </div>
@@ -272,9 +302,10 @@ function statusColor(pct) {
   if (pct <= 30) return 'var(--warn)';
   return 'var(--accent)';
 }
-function renderGauge(pct) {
-  const svg = document.getElementById('gaugeSvg');
-  const color = statusColor(pct);
+function renderGauge(svgId, pct, color) {
+  const svg = document.getElementById(svgId);
+  color = color || statusColor(pct);
+  const glowId = `glow-${svgId}`;
   let ticks = '';
   for (let i = 0; i <= 10; i++) {
     const ang = GAUGE_START + (GAUGE_END - GAUGE_START) * i / 10;
@@ -285,20 +316,41 @@ function renderGauge(pct) {
   const valueAngle = GAUGE_START + (GAUGE_END - GAUGE_START) * Math.min(100, pct) / 100;
   svg.innerHTML = `
     <defs>
-      <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <filter id="${glowId}" x="-50%" y="-50%" width="200%" height="200%">
         <feGaussianBlur stdDeviation="4" result="blur"/>
         <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
       </filter>
     </defs>
     ${ticks}
     <path d="${describeArc(CX, CY, R, GAUGE_START, GAUGE_END)}" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="10" stroke-linecap="round"/>
-    <path d="${describeArc(CX, CY, R, GAUGE_START, valueAngle)}" fill="none" stroke="${color}" stroke-width="10" stroke-linecap="round" filter="url(#glow)"/>
+    <path d="${describeArc(CX, CY, R, GAUGE_START, valueAngle)}" fill="none" stroke="${color}" stroke-width="10" stroke-linecap="round" filter="url(#${glowId})"/>
   `;
-  const readout = document.querySelector('.gauge-readout');
-  readout.style.position = 'absolute';
-  readout.style.top = '50%'; readout.style.left = '50%'; readout.style.transform = 'translate(-50%,-40%)';
-  document.querySelector('.gauge-box').style.position = 'relative';
-  document.getElementById('gaugeNum').style.color = color;
+  return color;
+}
+
+function idleActionColor(action) {
+  if (action === 'shutdown') return 'var(--crit)';
+  if (action === 'sleep') return 'var(--accent)';
+  return 'var(--text-dim)';
+}
+const IDLE_GAUGE_MAX_MIN = 120;
+function renderIdleGauge(minutes, action) {
+  minutes = Math.max(0, minutes || 0);
+  const color = idleActionColor(action);
+  renderGauge('idleGaugeSvg', 100 * minutes / IDLE_GAUGE_MAX_MIN, color);
+  const num = document.getElementById('idleGaugeNum');
+  num.textContent = minutes > 0 && action !== 'none' ? minutes : '--';
+  num.style.color = color;
+}
+function onIdleInputChange() {
+  const minutes = parseInt(document.getElementById('idleMinutesInput').value || '0', 10);
+  renderIdleGauge(minutes, document.getElementById('idleAction').value);
+}
+async function saveIdleSettings() {
+  const minutes = parseInt(document.getElementById('idleMinutesInput').value || '0', 10);
+  const action = document.getElementById('idleAction').value;
+  await api('/api/config', { method: 'POST', body: JSON.stringify({ idle_timeout_minutes: minutes, idle_action: action }) });
+  refresh();
 }
 
 async function api(path, opts) {
@@ -314,8 +366,11 @@ function renderLive(s) {
 
   const totalSec = s.daily_limit_minutes * 60 + s.bonus_seconds;
   const pct = totalSec > 0 ? Math.max(0, 100 * s.remaining_seconds / totalSec) : 0;
-  renderGauge(pct);
-  document.getElementById('gaugeNum').textContent = fmtMin(s.remaining_seconds);
+  const gaugeColor = renderGauge('gaugeSvg', pct);
+  const gaugeNum = document.getElementById('gaugeNum');
+  gaugeNum.textContent = fmtMin(s.remaining_seconds);
+  gaugeNum.style.color = gaugeColor;
+  renderIdleGauge(s.idle_timeout_minutes, s.idle_action);
 
   const pillWrap = document.getElementById('statusPillWrap');
   let pillClass = 'ok', pillText = 'W normie';
@@ -402,6 +457,8 @@ function updateWeekCombined(s) {
 // NIGDY przez cykliczny poller (inaczej kasuje to co właśnie wpisujesz).
 function renderConfigForms(s) {
   document.getElementById('targetUsername').value = s.target_username || '';
+  document.getElementById('idleMinutesInput').value = s.idle_timeout_minutes || 0;
+  document.getElementById('idleAction').value = s.idle_action || 'none';
   buildWeekCombined(s);
   const rangesList = document.getElementById('rangesList');
   rangesList.innerHTML = '';

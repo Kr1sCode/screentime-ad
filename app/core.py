@@ -47,6 +47,23 @@ def set_blocked_ranges(conn: sqlite3.Connection, ranges: list) -> None:
     set_config(conn, "blocked_ranges", json.dumps(clean))
 
 
+IDLE_ACTIONS = ("none", "sleep", "shutdown")
+
+
+def get_idle_timeout_minutes(conn: sqlite3.Connection) -> int:
+    return int(get_config(conn, "idle_timeout_minutes", "0") or 0)
+
+
+def get_idle_action(conn: sqlite3.Connection) -> str:
+    action = get_config(conn, "idle_action", "none")
+    return action if action in IDLE_ACTIONS else "none"
+
+
+def set_idle_settings(conn: sqlite3.Connection, timeout_minutes: int, action: str) -> None:
+    set_config(conn, "idle_timeout_minutes", str(max(0, int(timeout_minutes))))
+    set_config(conn, "idle_action", action if action in IDLE_ACTIONS else "none")
+
+
 def _parse_hhmm(s: str):
     h, m = s.split(":")
     return int(h) * 60 + int(m)

@@ -91,6 +91,27 @@ def terminate_session(session_id: str) -> None:
     subprocess.run(["loginctl", "terminate-session", session_id])
 
 
+# ponytail: bezczynność opiera się na IdleHint z systemd-logind, który nie
+# każde środowisko (np. gołe i3/sway bez idle daemona) w ogóle ustawia —
+# gdy go brak, po prostu nic nie wymuszamy zamiast zgadywać. Upgrade: własny
+# fallback przez X11 XScreenSaverQueryInfo, jeśli się okaże że to za mało.
+def session_idle_seconds(session_id: str) -> float | None:
+    props = subprocess.run(
+        ["loginctl", "show-session", session_id, "-p", "IdleHint", "-p", "IdleSinceHintMonotonic"],
+        capture_output=True, text=True,
+    ).stdout
+    d = dict(l.split("=", 1) for l in props.strip().splitlines() if "=" in l)
+    if d.get("IdleHint") != "yes":
+        return 0.0
+    try:
+        since_us = int(d.get("IdleSinceHintMonotonic", "0"))
+    except ValueError:
+        return None
+    if since_us <= 0:
+        return None
+    return max(0.0, time.monotonic() - since_us / 1_000_000)
+
+
 def _session_env(leader_pid: str) -> dict:
     envs = {}
     try:
@@ -146,6 +167,8 @@ def main() -> None:
     warned = {}
     accumulated = {}
     last_remaining_cache = {}
+    idle_settings = {}
+    idle_triggered = {}
     last_heartbeat = 0.0
     last_update_check = time.time()
 
@@ -158,7 +181,23 @@ def main() -> None:
 
         sessions = list_active_sessions()
         for s in sessions:
-            accumulated[s["session_id"]] = accumulated.get(s["session_id"], 0) + POLL_INTERVAL
+            sid = s["session_id"]
+            accumulated[sid] = accumulated.get(sid, 0) + POLL_INTERVAL
+
+            timeout_min, action = idle_settings.get(sid, (0, "none"))
+            if timeout_min and action != "none":
+                idle_sec = session_idle_seconds(sid)
+                if idle_sec is None:
+                    pass  # logind nie raportuje idle w tym środowisku
+                elif idle_sec < 60:
+                    idle_triggered[sid] = False
+                elif idle_sec >= timeout_min * 60 and not idle_triggered.get(sid):
+                    idle_triggered[sid] = True
+                    print(f"[idle] {s['username']}: bezczynność {int(idle_sec)}s >= {timeout_min}min, akcja: {action}")
+                    if action == "shutdown":
+                        subprocess.run(["systemctl", "poweroff"])
+                    elif action == "sleep":
+                        subprocess.run(["systemctl", "suspend"])
 
         if time.time() - last_heartbeat >= HEARTBEAT_INTERVAL:
             last_heartbeat = time.time()
@@ -168,6 +207,7 @@ def main() -> None:
                 try:
                     resp = heartbeat(cfg, s["username"], delta)
                     last_remaining_cache[sid] = resp["remaining_seconds"]
+                    idle_settings[sid] = (resp.get("idle_timeout_minutes", 0), resp.get("idle_action", "none"))
                 except (urllib.error.URLError, OSError):
                     prev = last_remaining_cache.get(sid)
                     remaining = max(0, prev - delta) if prev is not None else None

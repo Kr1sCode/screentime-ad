@@ -213,6 +213,7 @@ def main() -> None:
     warned = {}
     accumulated = {}
     last_remaining_cache = {}
+    last_idle_cache = {}
     last_heartbeat = 0.0
     last_update_check = time.time()
 
@@ -235,15 +236,19 @@ def main() -> None:
                 try:
                     resp = heartbeat(cfg, s["username"], delta)
                     last_remaining_cache[sid] = resp["remaining_seconds"]
+                    last_idle_cache[sid] = (resp.get("idle_timeout_minutes", 0), resp.get("idle_action", "none"))
                 except (urllib.error.URLError, OSError):
                     connected = False
                     prev = last_remaining_cache.get(sid)
                     remaining = max(0, prev - delta) if prev is not None else None
                     last_remaining_cache[sid] = remaining
+                    idle_timeout_minutes, idle_action = last_idle_cache.get(sid, (0, "none"))
                     resp = {
                         "remaining_seconds": remaining,
                         "warn_5min": remaining is not None and remaining <= WARN_THRESHOLD_SECONDS,
                         "force_logout": remaining is not None and remaining <= 0,
+                        "idle_timeout_minutes": idle_timeout_minutes,
+                        "idle_action": idle_action,
                     }
 
                 remaining = resp.get("remaining_seconds")
@@ -260,6 +265,8 @@ def main() -> None:
                     "remaining_seconds": remaining,
                     "warn": bool(resp.get("warn_5min")),
                     "locked": bool(resp.get("force_logout")),
+                    "idle_timeout_minutes": resp.get("idle_timeout_minutes", 0),
+                    "idle_action": resp.get("idle_action", "none"),
                 }
             write_status(status_by_user)
 

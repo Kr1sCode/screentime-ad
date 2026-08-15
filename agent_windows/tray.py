@@ -15,6 +15,7 @@ sprawdź %ProgramData%\\screentime-ad\\tray.log.
 import ctypes
 import json
 import os
+import subprocess
 import time
 import traceback
 from ctypes import wintypes
@@ -69,6 +70,10 @@ class NOTIFYICONDATA(ctypes.Structure):
         ("hIcon", wintypes.HICON),
         ("szTip", wintypes.WCHAR * 128),
     ]
+
+
+class LASTINPUTINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.UINT), ("dwTime", wintypes.DWORD)]
 
 
 class BITMAPINFOHEADER(ctypes.Structure):
@@ -144,6 +149,9 @@ gdi32.CreateFontW.argtypes = [
     wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD,
     wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, wintypes.LPCWSTR,
 ]
+user32.GetLastInputInfo.argtypes = [ctypes.POINTER(LASTINPUTINFO)]
+user32.GetLastInputInfo.restype = wintypes.BOOL
+kernel32.GetTickCount.restype = wintypes.DWORD
 
 nid = NOTIFYICONDATA()
 
@@ -220,6 +228,50 @@ def make_icon(kind: str, minutes: int | None = None):
     return hicon
 
 
+def get_idle_seconds() -> float:
+    """Sekundy od ostatniego ruchu myszy/klawiatury W TEJ sesji. Tray działa
+    per-user (Scheduled Task at logon), więc w przeciwieństwie do usługi
+    (SYSTEM, bez dostępu do pulpitu) widzi realny input użytkownika."""
+    lii = LASTINPUTINFO()
+    lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
+    user32.GetLastInputInfo(ctypes.byref(lii))
+    return max(0, kernel32.GetTickCount() - lii.dwTime) / 1000.0
+
+
+_idle_triggered = False
+
+
+def check_idle_enforcement() -> None:
+    """Wymusza uśpienie/wyłączenie po skonfigurowanym czasie bezczynności
+    (idle_timeout_minutes/idle_action, dopisywane do status.json przez
+    usługę na podstawie odpowiedzi /api/heartbeat)."""
+    global _idle_triggered
+    username = os.environ.get("USERNAME", "")
+    try:
+        data = json.loads(STATUS_PATH.read_text())
+        me = data.get("sessions", {}).get(username, {})
+        timeout_min = me.get("idle_timeout_minutes", 0)
+        action = me.get("idle_action", "none")
+        if not timeout_min or action == "none":
+            _idle_triggered = False
+            return
+        idle_seconds = get_idle_seconds()
+        if idle_seconds < 60:
+            _idle_triggered = False
+            return
+        if idle_seconds >= timeout_min * 60 and not _idle_triggered:
+            _idle_triggered = True
+            _log(f"bezczynność {int(idle_seconds)}s >= {timeout_min}min, akcja: {action}")
+            if action == "shutdown":
+                subprocess.run(["shutdown", "/s", "/f", "/t", "0"])
+            elif action == "sleep":
+                subprocess.run(["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"])
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        _log(f"check_idle_enforcement error: {e}")
+
+
 def read_status():
     """Zwraca (kind, text, minuty_pozostałe_lub_None — None gdy nie ma sensu
     rysować licznika, np. brak połączenia albo usługa nieaktywna)."""
@@ -262,6 +314,7 @@ def update_tray() -> None:
 def wndproc(hwnd, msg, wparam, lparam):
     if msg == WM_TIMER:
         update_tray()
+        check_idle_enforcement()
         return 0
     if msg in (WM_CLOSE, WM_DESTROY):
         shell32.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(nid))

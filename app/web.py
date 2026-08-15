@@ -155,6 +155,8 @@ def state():
         history=core.history(conn),
         agent_token=core.get_config(conn, "agent_token"),
         manual_locked=core.is_manually_locked(conn, date),
+        idle_timeout_minutes=core.get_idle_timeout_minutes(conn),
+        idle_action=core.get_idle_action(conn),
         ad_lock_enabled=core.get_config(conn, "ad_lock_enabled", "0") == "1",
         ldap_configured=_ldap_cfg(conn) is not None,
         ldap_host=core.get_config(conn, "ldap_host", ""),
@@ -210,6 +212,12 @@ def set_config():
         core.set_weekday_limits(conn, data["weekday_limits"])
     if "blocked_ranges" in data:
         core.set_blocked_ranges(conn, data["blocked_ranges"])
+    if "idle_timeout_minutes" in data or "idle_action" in data:
+        core.set_idle_settings(
+            conn,
+            data.get("idle_timeout_minutes", core.get_idle_timeout_minutes(conn)),
+            data.get("idle_action", core.get_idle_action(conn)),
+        )
     conn.close()
     return jsonify(ok=True)
 
@@ -275,8 +283,13 @@ def heartbeat():
     remaining = core.remaining_seconds(conn) if is_target else 999_999
     warn = is_target and (remaining <= 300 or core.blocked_range_starts_soon(conn))
     force = is_target and (blocked or remaining <= 0)
+    idle_timeout_minutes = core.get_idle_timeout_minutes(conn) if is_target else 0
+    idle_action = core.get_idle_action(conn) if is_target else "none"
     conn.close()
-    return jsonify(remaining_seconds=remaining, warn_5min=warn, force_logout=force)
+    return jsonify(
+        remaining_seconds=remaining, warn_5min=warn, force_logout=force,
+        idle_timeout_minutes=idle_timeout_minutes, idle_action=idle_action,
+    )
 
 
 if __name__ == "__main__":
