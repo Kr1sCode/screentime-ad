@@ -22,9 +22,13 @@ SolidCompression=yes
 Uninstallable=yes
 
 [Files]
-Source: "..\dist\screentime-ad-agent\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
-Source: "..\dist\screentime-ad-tray\*"; DestDir: "{app}\tray"; Flags: recursesubdirs ignoreversion
-Source: "nssm.exe"; DestDir: "{app}"; Flags: ignoreversion
+; restartreplace: jesli mimo taskkill jakis plik nadal jest zablokowany
+; (np. Defender akurat go skanuje), instalator NIE wywala sie na twardo —
+; podmiana tego pliku zostaje odlozona do najblizszego restartu zamiast
+; przerywac cala instalacje.
+Source: "..\dist\screentime-ad-agent\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion restartreplace
+Source: "..\dist\screentime-ad-tray\*"; DestDir: "{app}\tray"; Flags: recursesubdirs ignoreversion restartreplace
+Source: "nssm.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace
 
 [Code]
 var
@@ -92,12 +96,17 @@ begin
     if FileExists(ExpandConstant('{app}\nssm.exe')) then
     begin
       NssmExec('stop ' + SvcName);
-      ShellExec(ExpandConstant('{sys}\taskkill.exe'), '/IM screentime-ad-agent.exe /F');
+      ShellExec(ExpandConstant('{sys}\taskkill.exe'), '/T /F /IM screentime-ad-agent.exe');
     end;
     // Tray dziala caly czas w sesji uzytkownika (to caly jego sens) — bez
     // zabicia go tutaj, [Files] wisi na "plik w uzyciu" przy kazdym
     // upgrade, bo trzyma otwarte wlasne .exe/.dll w {app}\tray.
-    ShellExec(ExpandConstant('{sys}\taskkill.exe'), '/IM screentime-ad-tray.exe /F');
+    ShellExec(ExpandConstant('{sys}\taskkill.exe'), '/T /F /IM screentime-ad-tray.exe');
+    // Krotki oddech — nawet po /F proces bywa formalnie martwy, a uchwyty
+    // plikow (zwlaszcza gdy Defender akurat skanuje) zwalniaja sie z
+    // niewielkim opoznieniem. [Files] ma i tak restartreplace jako siatke
+    // bezpieczenstwa, ale to zmniejsza szanse ze w ogole trzeba z niej korzystac.
+    Sleep(1500);
   end;
 
   if CurStep = ssPostInstall then
