@@ -92,8 +92,10 @@
   .weekbar-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: .6rem; margin-top: .4rem; }
   .weekbar { display: flex; flex-direction: column; align-items: center; gap: .4rem; }
   .weekbar label { font-family: var(--mono); font-size: .65rem; color: var(--text-dim); letter-spacing: .1em; text-transform: uppercase; }
-  .weekbar .track { width: 100%; height: clamp(40px, 9vh, 70px); background: rgba(255,255,255,.04); border: 1px solid var(--panel-border); border-radius: 2px; display: flex; align-items: flex-end; overflow: hidden; }
+  .weekbar .track { position: relative; width: 100%; height: clamp(40px, 9vh, 70px); background: rgba(255,255,255,.04); border: 1px solid var(--panel-border); border-radius: 2px; display: flex; align-items: flex-end; overflow: hidden; }
   .weekbar .fill { width: 100%; background: linear-gradient(180deg, var(--accent), var(--accent-dim)); box-shadow: 0 0 10px rgba(34,211,238,.5); transition: height .4s; }
+  .weekbar .fill.over { background: linear-gradient(180deg, var(--crit), #7a1620); box-shadow: 0 0 10px rgba(255,77,94,.5); }
+  .weekbar .limit-line { position: absolute; left: 0; right: 0; height: 2px; background: var(--warn); box-shadow: 0 0 6px rgba(250,178,25,.7); z-index: 1; }
   .weekbar.today .track { border-color: var(--accent); }
   .weekbar input { width: 100%; background: #0a1219; border: 1px solid var(--panel-border); color: var(--text); font-family: var(--mono); font-size: .75rem; text-align: center; border-radius: 3px; padding: .25rem 0; }
   .wc-val { font-family: var(--mono); font-size: .7rem; color: var(--text-dim); }
@@ -164,14 +166,6 @@
   </div>
 
   <div class="panel">
-    <h2>Limit dzienny — rozbicie na dni tygodnia (min)</h2>
-    <div class="weekbar-row" id="weekbars"></div>
-    <div class="row" style="margin-top:1rem">
-      <button onclick="saveWeekLimits()">zapisz limity</button>
-    </div>
-  </div>
-
-  <div class="panel">
     <h2>Godziny blokady (twardy zakaz, niezależnie od puli)</h2>
     <div class="ranges" id="rangesList"></div>
     <div class="row" style="margin-top:.8rem">
@@ -181,8 +175,12 @@
   </div>
 
   <div class="panel">
-    <h2>Wykres tygodniowy — czas spędzony przed komputerem</h2>
-    <div class="weekbar-row" id="weekChart"></div>
+    <h2>Tydzień — limit i zużycie (min)</h2>
+    <div class="weekbar-row" id="weekCombined"></div>
+    <p class="sub" style="margin-top:.6rem">słupek = czas zużyty tego dnia, żółta linia = limit dnia; edytuj limit w polu i zapisz</p>
+    <div class="row" style="margin-top:.6rem">
+      <button onclick="saveWeekLimits()">zapisz limity</button>
+    </div>
   </div>
 
   </div>
@@ -257,15 +255,6 @@ const CORNERS = '<span class="corners"><i class="c tl"></i><i class="c tr"></i><
 document.querySelectorAll('.panel').forEach(p => p.insertAdjacentHTML('afterbegin', CORNERS));
 
 const WEEKDAYS = [['mon','PON'],['tue','WTO'],['wed','ŚRO'],['thu','CZW'],['fri','PIĄ'],['sat','SOB'],['sun','NDZ']];
-const weekbarsEl = document.getElementById('weekbars');
-WEEKDAYS.forEach(([key,label]) => {
-  weekbarsEl.insertAdjacentHTML('beforeend', `
-    <div class="weekbar" data-key="${key}">
-      <div class="track"><div class="fill" id="fill-${key}" style="height:0%"></div></div>
-      <input id="input-${key}" type="number" min="0" value="120">
-      <label>${label}</label>
-    </div>`);
-});
 
 function polarToCartesian(cx, cy, r, angleDeg) {
   const a = (angleDeg - 90) * Math.PI / 180;
@@ -347,29 +336,18 @@ function renderLive(s) {
   lockBtn.classList.toggle('danger', !s.manual_locked);
   lockBtn.classList.toggle('ghost', s.manual_locked);
 
-  // Słupki w panelu limitów pokazują wysokość limitu wzgl. najwyższego dnia
-  // tygodnia (samo info o konfiguracji) — realne zużycie ma osobny wykres
-  // niżej (renderWeekChart), bo te dwie rzeczy to różne dane, nie to samo.
-  const todayKey = WEEKDAYS[(new Date().getDay() + 6) % 7][0];
-  const maxLimit = Math.max(1, ...WEEKDAYS.map(([k]) => s.weekday_limits[k]));
-  WEEKDAYS.forEach(([key]) => {
-    const h = Math.min(100, 100 * s.weekday_limits[key] / maxLimit);
-    document.getElementById(`fill-${key}`).style.height = h + '%';
-    const wb = document.querySelector(`.weekbar[data-key="${key}"]`);
-    wb.classList.toggle('today', key === todayKey);
-  });
-
   document.getElementById('machinesBody').innerHTML = s.machines.map(m =>
     `<tr><td>${m.hostname}</td><td>${m.os||''}</td><td>${new Date(m.last_seen).toLocaleString('pl-PL')}</td></tr>`
   ).join('') || '<tr><td colspan="3" class="sub">brak danych</td></tr>';
 
-  renderWeekChart(s);
+  updateWeekCombined(s);
 }
 
-// Prawdziwy wykres ostatnich 7 dni (nie 7 slotów dnia-tygodnia jak wyżej) —
-// łączy s.history (zużycie per data) z limitem właściwym dla dnia tygodnia
-// tamtej konkretnej daty.
-function renderWeekChart(s) {
+// Ostatnie 7 kalendarzowych dni (nie 7 stałych slotów dnia tygodnia) —
+// łączy s.history (realne zużycie per data) z limitem właściwym dla dnia
+// tygodnia tamtej konkretnej daty (s.weekday_limits), więc każdy słupek
+// niesie od razu obie informacje: ile zużyto i jaki był limit.
+function getWeekDays(s) {
   const usedByDate = {};
   s.history.forEach(h => { usedByDate[h.date] = h.seconds_used; });
   const days = [];
@@ -377,27 +355,54 @@ function renderWeekChart(s) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     const iso = d.toISOString().slice(0, 10);
-    const wkLabel = WEEKDAYS[(d.getDay() + 6) % 7][1];
+    const [key, wkLabel] = WEEKDAYS[(d.getDay() + 6) % 7];
     days.push({
-      iso, wkLabel,
+      iso, key, wkLabel,
       usedMin: fmtMin(usedByDate[iso] || 0),
+      limitMin: s.weekday_limits[key],
       isToday: i === 0,
     });
   }
-  const maxMin = Math.max(1, ...days.map(d => d.usedMin), 30);
-  document.getElementById('weekChart').innerHTML = days.map(d => `
-    <div class="weekbar ${d.isToday ? 'today' : ''}">
-      <div class="wc-val">${d.usedMin}</div>
-      <div class="track"><div class="fill" style="height:${Math.min(100, 100 * d.usedMin / maxMin)}%"></div></div>
+  return days;
+}
+
+// Struktura (w tym pole <input> limitu) budowana tylko przy starcie i zaraz
+// po zapisie — patrz komentarz przy renderConfigForms niżej.
+function buildWeekCombined(s) {
+  const days = getWeekDays(s);
+  document.getElementById('weekCombined').innerHTML = days.map(d => `
+    <div class="weekbar ${d.isToday ? 'today' : ''}" data-key="${d.key}">
+      <div class="wc-val" id="wcval-${d.key}">${d.usedMin} / ${d.limitMin}</div>
+      <div class="track">
+        <div class="limit-line" id="limitline-${d.key}"></div>
+        <div class="fill" id="fill-${d.key}"></div>
+      </div>
+      <input id="input-${d.key}" type="number" min="0" value="${d.limitMin}">
       <label>${d.wkLabel}<br>${d.iso.slice(5)}</label>
     </div>`).join('');
+  updateWeekCombined(s);
+}
+
+// Tylko wysokości/kolory słupków — wywoływane co poll, NIGDY nie dotyka <input>.
+function updateWeekCombined(s) {
+  const days = getWeekDays(s);
+  const maxMin = Math.max(1, ...days.map(d => Math.max(d.usedMin, d.limitMin)), 30);
+  days.forEach(d => {
+    const fill = document.getElementById(`fill-${d.key}`);
+    if (!fill) return;
+    fill.style.height = Math.min(100, 100 * d.usedMin / maxMin) + '%';
+    fill.classList.toggle('over', d.limitMin > 0 && d.usedMin > d.limitMin);
+    document.getElementById(`limitline-${d.key}`).style.bottom = Math.min(100, 100 * d.limitMin / maxMin) + '%';
+    document.getElementById(`wcval-${d.key}`).textContent = `${d.usedMin} / ${d.limitMin}`;
+    document.querySelector(`.weekbar[data-key="${d.key}"]`).classList.toggle('today', d.isToday);
+  });
 }
 
 // Pola edytowalne — ustawiane tylko przy starcie strony i zaraz po zapisie,
 // NIGDY przez cykliczny poller (inaczej kasuje to co właśnie wpisujesz).
 function renderConfigForms(s) {
   document.getElementById('targetUsername').value = s.target_username || '';
-  WEEKDAYS.forEach(([key]) => { document.getElementById(`input-${key}`).value = s.weekday_limits[key]; });
+  buildWeekCombined(s);
   const rangesList = document.getElementById('rangesList');
   rangesList.innerHTML = '';
   (s.blocked_ranges.length ? s.blocked_ranges : [{start:'',end:''}]).forEach(r => addRangeRow(r.start, r.end));
