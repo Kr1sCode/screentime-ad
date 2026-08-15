@@ -94,6 +94,10 @@ begin
       NssmExec('stop ' + SvcName);
       ShellExec(ExpandConstant('{sys}\taskkill.exe'), '/IM screentime-ad-agent.exe /F');
     end;
+    // Tray dziala caly czas w sesji uzytkownika (to caly jego sens) — bez
+    // zabicia go tutaj, [Files] wisi na "plik w uzyciu" przy kazdym
+    // upgrade, bo trzyma otwarte wlasne .exe/.dll w {app}\tray.
+    ShellExec(ExpandConstant('{sys}\taskkill.exe'), '/IM screentime-ad-tray.exe /F');
   end;
 
   if CurStep = ssPostInstall then
