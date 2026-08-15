@@ -42,15 +42,19 @@
     mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black, transparent 75%);
   }
   .page {
-    max-width: 90vw; margin: 0 auto; height: 100%;
-    padding: 2.4rem 1.5rem 1.4rem;
-    display: flex; flex-direction: column; gap: 1.2rem;
-    position: relative;
+    max-width: 90vw; margin: 0 auto; height: 100dvh; max-height: 100dvh;
+    padding: clamp(.8rem, 3vh, 2.4rem) clamp(.8rem, 2vw, 1.5rem) clamp(.5rem, 2vh, 1.4rem);
+    display: flex; flex-direction: column; gap: clamp(.4rem, 1.5vh, 1.2rem);
+    position: relative; overflow: hidden;
   }
-  .scroll-area { flex: 1; min-height: 0; overflow-y: auto; }
-  .wrap { display: flex; flex-direction: column; gap: 1.4rem; position: relative; padding-bottom: .3rem; }
+  .scroll-area {
+    flex: 1; min-height: 0; overflow-y: auto;
+    scrollbar-width: none; -ms-overflow-style: none;
+  }
+  .scroll-area::-webkit-scrollbar { display: none; }
+  .wrap { display: flex; flex-direction: column; gap: clamp(.4rem, 1.5vh, 1.4rem); position: relative; padding-bottom: .3rem; }
 
-  header { flex-shrink: 0; display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--panel-border); padding-bottom: .8rem; }
+  header { flex-shrink: 0; display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--panel-border); padding-bottom: clamp(.3rem, 1vh, .8rem); }
   h1 { font-size: 1rem; margin: 0; letter-spacing: .3em; text-transform: uppercase; color: var(--accent); text-shadow: 0 0 12px rgba(34,211,238,.6); }
   .sub { font-family: var(--mono); font-size: .7rem; color: var(--text-dim); letter-spacing: .1em; }
 
@@ -59,7 +63,7 @@
     background: var(--panel);
     border: 1px solid var(--panel-border);
     border-radius: 4px;
-    padding: 1.4rem 1.6rem;
+    padding: clamp(.7rem, 2vh, 1.4rem) clamp(.9rem, 2.4vw, 1.6rem);
     backdrop-filter: blur(6px);
   }
   .corners .c { position: absolute; width: 14px; height: 14px; pointer-events: none; }
@@ -68,10 +72,11 @@
   .corners .bl { bottom: -1px; left: -1px; border-bottom: 2px solid var(--accent); border-left: 2px solid var(--accent); }
   .corners .br { bottom: -1px; right: -1px; border-bottom: 2px solid var(--accent); border-right: 2px solid var(--accent); }
 
-  h2 { margin: 0 0 1rem; font-size: .75rem; letter-spacing: .2em; text-transform: uppercase; color: var(--text-dim); font-weight: 600; }
+  h2 { margin: 0 0 clamp(.4rem, 1.2vh, 1rem); font-size: .75rem; letter-spacing: .2em; text-transform: uppercase; color: var(--text-dim); font-weight: 600; }
 
-  .hero { display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; }
+  .hero { display: flex; align-items: center; gap: clamp(1rem, 3vw, 2rem); flex-wrap: wrap; }
   .gauge-box { flex-shrink: 0; }
+  #gaugeSvg { width: clamp(110px, 18vh, 200px); height: clamp(110px, 18vh, 200px); }
   .gauge-readout { position: relative; }
   .gauge-num { font-family: var(--mono); font-size: 2.1rem; font-weight: 700; text-align: center; }
   .gauge-label { font-family: var(--mono); font-size: .65rem; text-align: center; color: var(--text-dim); letter-spacing: .15em; margin-top: .2rem; }
@@ -87,7 +92,7 @@
   .weekbar-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: .6rem; margin-top: .4rem; }
   .weekbar { display: flex; flex-direction: column; align-items: center; gap: .4rem; }
   .weekbar label { font-family: var(--mono); font-size: .65rem; color: var(--text-dim); letter-spacing: .1em; text-transform: uppercase; }
-  .weekbar .track { width: 100%; height: 70px; background: rgba(255,255,255,.04); border: 1px solid var(--panel-border); border-radius: 2px; display: flex; align-items: flex-end; overflow: hidden; }
+  .weekbar .track { width: 100%; height: clamp(40px, 9vh, 70px); background: rgba(255,255,255,.04); border: 1px solid var(--panel-border); border-radius: 2px; display: flex; align-items: flex-end; overflow: hidden; }
   .weekbar .fill { width: 100%; background: linear-gradient(180deg, var(--accent), var(--accent-dim)); box-shadow: 0 0 10px rgba(34,211,238,.5); transition: height .4s; }
   .weekbar.today .track { border-color: var(--accent); }
   .weekbar input { width: 100%; background: #0a1219; border: 1px solid var(--panel-border); color: var(--text); font-family: var(--mono); font-size: .75rem; text-align: center; border-radius: 3px; padding: .25rem 0; }
@@ -111,6 +116,8 @@
   #msg { min-height: 1.2rem; font-family: var(--mono); font-size: .8rem; color: var(--good); }
 
   .footer-panel { flex-shrink: 0; text-align: center; padding: .8rem 1rem; font-family: var(--mono); font-size: .7rem; color: var(--text-dim); letter-spacing: .1em; }
+  .view { display: none; flex-direction: column; gap: 1.4rem; }
+  .view.active { display: flex; }
 </style>
 </head>
 <body>
@@ -118,13 +125,14 @@
   <header>
     <h1>screentime-ad</h1>
     <div class="row">
-      <span class="sub" id="dateLabel">--</span>
-      <button class="ghost" onclick="logout()">wyloguj</button>
+      <button class="ghost" id="navBtn" onclick="toggleView()">ustawienia</button>
     </div>
   </header>
 
   <div class="scroll-area">
   <div class="wrap">
+
+  <div class="view active" id="dashboardView">
 
   <div class="panel">
     <h2>Status dzisiaj</h2>
@@ -145,12 +153,8 @@
           <button onclick="addBonus(15)">+15 min</button>
           <button class="ghost" onclick="addBonus(-10)">-10 min</button>
           <button class="ghost" onclick="addBonus(-20)">-20 min</button>
-        </div>
-        <div class="row" style="margin-top:.4rem">
           <input id="setRemainingInput" type="number" min="0" placeholder="min" style="width:80px">
-          <button onclick="setRemaining()">ustaw pozostały czas</button>
-        </div>
-        <div class="row" style="margin-top:.4rem">
+          <button onclick="setRemaining()">ustaw</button>
           <button class="danger" id="lockToggleBtn" onclick="toggleLock()">zablokuj teraz</button>
         </div>
       </div>
@@ -171,6 +175,22 @@
     <div class="row" style="margin-top:.8rem">
       <button class="ghost" onclick="addRangeRow()">+ dodaj zakres</button>
       <button onclick="saveRanges()">zapisz</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Wykres tygodniowy — czas spędzony przed komputerem</h2>
+    <div class="weekbar-row" id="weekChart"></div>
+  </div>
+
+  </div>
+
+  <div class="view" id="settingsView">
+
+  <div class="panel">
+    <div class="row" style="justify-content:space-between">
+      <button class="ghost" id="dateBtn">--</button>
+      <button class="ghost" onclick="logout()">wyloguj</button>
     </div>
   </div>
 
@@ -220,11 +240,6 @@
   </div>
 
   <div class="panel">
-    <h2>Wykres tygodniowy — czas spędzony przed komputerem</h2>
-    <div class="weekbar-row" id="weekChart"></div>
-  </div>
-
-  <div class="panel">
     <h2>Zmiana hasła</h2>
     <div class="row">
       <input id="curPass" type="password" placeholder="obecne hasło">
@@ -232,6 +247,8 @@
       <button onclick="changePassword()">zmień</button>
     </div>
     <div id="msg"></div>
+  </div>
+
   </div>
 
   </div>
@@ -309,7 +326,7 @@ function fmtMin(sec) { return Math.floor(sec / 60); }
 
 // Telemetria (bezpieczna do odświeżania co kilka sekund — nic tu nie edytujesz).
 function renderLive(s) {
-  document.getElementById('dateLabel').textContent = s.date + (s.blocked_now ? ' · GODZINA BLOKADY' : '');
+  document.getElementById('dateBtn').textContent = s.date + (s.blocked_now ? ' · GODZINA BLOKADY' : '');
 
   const totalSec = s.daily_limit_minutes * 60 + s.bonus_seconds;
   const pct = totalSec > 0 ? Math.max(0, 100 * s.remaining_seconds / totalSec) : 0;
@@ -473,6 +490,11 @@ async function toggleLock() {
   await api(path, { method: 'POST' });
   refreshLive();
 }
+function toggleView() {
+  const inSettings = document.getElementById('settingsView').classList.toggle('active');
+  document.getElementById('dashboardView').classList.toggle('active', !inSettings);
+  document.getElementById('navBtn').textContent = inSettings ? 'pulpit' : 'ustawienia';
+}
 async function logout() { await api('/api/logout', { method: 'POST' }); location.href = '/login.html'; }
 async function changePassword() {
   const msg = document.getElementById('msg');
@@ -483,12 +505,6 @@ async function changePassword() {
   msg.textContent = res.ok ? 'Hasło zmienione.' : (data.error || 'błąd');
   if (res.ok) { document.getElementById('curPass').value = ''; document.getElementById('newPass').value = ''; }
 }
-
-const scrollArea = document.querySelector('.scroll-area');
-document.addEventListener('wheel', (e) => {
-  scrollArea.scrollTop += e.deltaY;
-  e.preventDefault();
-}, { passive: false });
 
 refresh();
 setInterval(refreshLive, 5000);
