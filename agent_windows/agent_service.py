@@ -243,7 +243,7 @@ def main() -> None:
     accumulated = {}
     offline_cache = load_offline_cache()  # {username: {date, remaining_seconds, idle_timeout_minutes, idle_action}}
     last_heartbeat = 0.0
-    last_update_check = time.time()
+    last_update_check = 0.0  # sprawdź od razu po starcie/restarcie, nie dopiero za godzinę
 
     while True:
         if time.time() - last_update_check >= UPDATE_CHECK_INTERVAL:
