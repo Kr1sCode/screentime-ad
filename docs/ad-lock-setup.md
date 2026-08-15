@@ -1,6 +1,6 @@
-# Twarda blokada konta w AD — konfiguracja na dc-example
+# Twarda blokada konta w AD — konfiguracja na kontrolerze domeny (DC)
 
-Uruchom jako Domain Admin (RSAT `ActiveDirectory` module) **na/przeciw dc-example**.
+Uruchom jako Domain Admin (RSAT `ActiveDirectory` module) **na/przeciw kontrolerowi domeny (DC)**.
 Tworzy jedno konto serwisowe z uprawnieniem **wyłącznie** do zmiany atrybutu
 `userAccountControl` na koncie dziecka — nic więcej (nie hasło, nie grupy, nie
 inne atrybuty, nie inne konta).
@@ -28,7 +28,7 @@ dsacls "$childDN" | Select-String "svc-screentime"
 
 | Pole | Wartość |
 |---|---|
-| host LDAPS | `192.0.2.10` (dc-example) |
+| host LDAPS | `192.0.2.10` (adres Twojego DC) |
 | base DN | Distinguished Name domeny z kroku 0, np. `DC=contoso,DC=...` |
 | bind DN | `CN=svc-screentime,CN=Users,<base DN>` |
 | hasło bind | hasło ustawione w kroku 1 |
@@ -37,7 +37,7 @@ Po zapisaniu kliknij **testuj połączenie** w panelu — spróbuje się zalogow
 wykonać nieszkodliwy zapis (odblokowanie, no-op jeśli konto już odblokowane).
 Błąd `insufficientAccessRights` = delegacja z kroku 2 nie poszła / zła DN.
 
-Cert LDAPS na dc-example bywa wygasły — agent (`ad_lock.py`) świadomie nie
+Cert LDAPS na kontrolerze domeny (DC) bywa wygasły — agent (`ad_lock.py`) świadomie nie
 weryfikuje certyfikatu (`ssl.CERT_NONE`), bo to ruch wewnątrz zaufanej sieci
 domenowej, nie coś wystawionego na zewnątrz.
 
